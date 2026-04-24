@@ -4,7 +4,7 @@ A tiny shell-like OS simulator written in Python.
 
 Features
 
-- Command system (help, echo, time, clear, exit)
+- Command system ("help", "echo", "time", "clear", "exit")
 - Calculator ("calc")
 - Simple file system ("ls", "touch", "cat")
 
