@@ -19,3 +19,9 @@ Features / 기능
 Usage / 실행 방법
 
 python neoos.py
+
+Termux Ubuntu 자동 설치
+
+```bash
+bash scripts/termux_ubuntu_install.sh
+```
