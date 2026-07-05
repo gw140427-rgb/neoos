@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>마크 데모 - Claude Craft</title>
+<style>
+  body { margin: 0; overflow: hidden; font-family: monospace; }
+  #crosshair {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    color: white; font-size: 24px; pointer-events: none; text-shadow: 0 0 3px black;
+  }
+  #hud {
+    position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px;
+  }
+  .slot {
+    width: 48px; height: 48px; border: 3px solid #888; background: rgba(0,0,0,.5);
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 11px; text-align: center;
+  }
+  .slot.active { border-color: white; }
+  #info {
+    position: fixed; top: 10px; left: 10px; color: white; text-shadow: 1px 1px 2px black;
+    font-size: 13px; line-height: 1.6;
+  }
+  #start {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7); color: white;
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+    cursor: pointer; font-size: 20px; gap: 10px;
+  }
+</style>
+</head>
+<body>
+<div id="crosshair">+</div>
+<div id="info">
+  WASD 이동 · 스페이스 점프 · 마우스 시점<br>
+  좌클릭 파괴 · 우클릭 설치 · 1~5 블록 선택
+</div>
+<div id="hud"></div>
+<div id="start"><b>⛏ Claude Craft</b><span>탭해서 시작</span></div>
+
+<!-- 모바일 터치 UI -->
+<div id="joystick"><div id="stick"></div></div>
+<div id="btns">
+  <div class="tbtn" id="jumpBtn">⬆</div>
+  <div class="tbtn" id="modeBtn">⛏</div>
+</div>
+<style>
+  #joystick {
+    position: fixed; bottom: 90px; left: 20px; width: 120px; height: 120px;
+    border-radius: 50%; background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.4);
+    display: none; touch-action: none; z-index: 10;
+  }
+  #stick {
+    position: absolute; top: 35px; left: 35px; width: 50px; height: 50px;
+    border-radius: 50%; background: rgba(255,255,255,.5);
+  }
+  #btns { position: fixed; bottom: 100px; right: 20px; display: none; flex-direction: column; gap: 14px; z-index: 10; }
+  .tbtn {
+    width: 64px; height: 64px; border-radius: 50%; background: rgba(255,255,255,.2);
+    border: 2px solid rgba(255,255,255,.4); color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; touch-action: none;
+    user-select: none; -webkit-user-select: none;
+  }
+</style>
+
+<script type="module">
+import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+
+// ---------- 기본 셋업 ----------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 30, 90);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 200);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+sun.position.set(50, 100, 30);
+scene.add(sun);
+
+// ---------- 블록 종류 ----------
+const BLOCKS = {
+  1: { name: '잔디',  color: 0x55a630 },
+  2: { name: '흙',    color: 0x8b5a2b },
+  3: { name: '돌',    color: 0x888888 },
+  4: { name: '나무',  color: 0x6f4518 },
+  5: { name: '나뭇잎', color: 0x2d6a4f },
+};
+let selected = 1;
+
+// HUD
+const hud = document.getElementById('hud');
+for (const [id, b] of Object.entries(BLOCKS)) {
+  const d = document.createElement('div');
+  d.className = 'slot' + (id == 1 ? ' active' : '');
+  d.textContent = `${id}\n${b.name}`;
+  d.style.background = '#' + b.color.toString(16).padStart(6,'0') + 'cc';
+  d.dataset.id = id;
+  hud.appendChild(d);
+}
+addEventListener('keydown', e => {
+  if (BLOCKS[e.key]) {
+    selected = +e.key;
+    document.querySelectorAll('.slot').forEach(s =>
+      s.classList.toggle('active', s.dataset.id == e.key));
+  }
+});
+
+// ---------- 월드 데이터 ----------
+const world = new Map();               // "x,y,z" -> blockId
+const key = (x,y,z) => `${x},${y},${z}`;
+
+// 간단한 밸류 노이즈 지형
+function noise(x, z) {
+  const s = n => { const v = Math.sin(n)*43758.5453; return v - Math.floor(v); };
+  const xi = Math.floor(x/8), zi = Math.floor(z/8);
+  const xf = x/8 - xi, zf = z/8 - zi;
+  const h = (a,b) => s(a*127.1 + b*311.7);
+  const lerp = (a,b,t) => a + (b-a)*(t*t*(3-2*t));
+  return lerp(lerp(h(xi,zi), h(xi+1,zi), xf), lerp(h(xi,zi+1), h(xi+1,zi+1), xf), zf);
+}
+
+const SIZE = 24;
+for (let x = -SIZE; x <= SIZE; x++)
+  for (let z = -SIZE; z <= SIZE; z++) {
+    const h = Math.floor(noise(x, z) * 6) + 2;
+    for (let y = 0; y <= h; y++)
+      world.set(key(x,y,z), y === h ? 1 : (y > h-3 ? 2 : 3));
+    // 나무 심기
+    if (Math.random() < 0.008 && h > 2) {
+      for (let y = h+1; y <= h+4; y++) world.set(key(x,y,z), 4);
+      for (let dx=-2; dx<=2; dx++) for (let dz=-2; dz<=2; dz++) for (let dy=3; dy<=5; dy++)
+        if (Math.abs(dx)+Math.abs(dz)+Math.abs(dy-4) < 4 && !world.has(key(x+dx,h+dy,z+dz)))
+          world.set(key(x+dx,h+dy,z+dz), 5);
+    }
+  }
+
+// ---------- 렌더링 (InstancedMesh per block type) ----------
+const geo = new THREE.BoxGeometry(1,1,1);
+const meshes = {};
+function rebuild() {
+  for (const id in meshes) { scene.remove(meshes[id]); meshes[id].dispose?.(); }
+  const byType = {};
+  for (const [k, id] of world) (byType[id] ??= []).push(k);
+  for (const [id, keys] of Object.entries(byType)) {
+    const mat = new THREE.MeshLambertMaterial({ color: BLOCKS[id].color });
+    const m = new THREE.InstancedMesh(geo, mat, keys.length);
+    const M = new THREE.Matrix4();
+    keys.forEach((k, i) => {
+      const [x,y,z] = k.split(',').map(Number);
+      M.setPosition(x, y, z);
+      m.setMatrixAt(i, M);
+    });
+    scene.add(m);
+    meshes[id] = m;
+  }
+}
+rebuild();
+
+// ---------- 플레이어 & 조작 ----------
+const player = { pos: new THREE.Vector3(0, 15, 0), vel: new THREE.Vector3(), onGround: false };
+let yaw = 0, pitch = 0;
+const keys = {};
+addEventListener('keydown', e => keys[e.code] = true);
+addEventListener('keyup', e => keys[e.code] = false);
+
+const isTouch = 'ontouchstart' in window;
+let playing = false;
+const startEl = document.getElementById('start');
+startEl.onclick = () => {
+  if (isTouch) {
+    playing = true;
+    startEl.style.display = 'none';
+    document.getElementById('joystick').style.display = 'block';
+    document.getElementById('btns').style.display = 'flex';
+    document.getElementById('info').innerHTML =
+      '왼쪽 조이스틱 이동 · 화면 드래그 시점<br>탭: 파괴/설치 (⛏버튼으로 전환) · ⬆점프 · 핫바 탭으로 블록 선택';
+  } else {
+    renderer.domElement.requestPointerLock();
+  }
+};
+document.addEventListener('pointerlockchange', () => {
+  if (!isTouch) startEl.style.display = document.pointerLockElement ? 'none' : 'flex';
+});
+addEventListener('mousemove', e => {
+  if (!document.pointerLockElement) return;
+  yaw -= e.movementX * 0.002;
+  pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * 0.002));
+});
+
+// 블록 설치/파괴 공통 함수
+const ray = new THREE.Raycaster(); ray.far = 6;
+function interact(destroy) {
+  ray.setFromCamera(new THREE.Vector2(0,0), camera);
+  const hits = ray.intersectObjects(Object.values(meshes));
+  if (!hits.length) return;
+  const h = hits[0];
+  const p = h.point.clone().addScaledVector(h.face.normal, destroy ? -0.5 : 0.5);
+  const bx = Math.round(p.x), by = Math.round(p.y), bz = Math.round(p.z);
+  if (destroy) world.delete(key(bx,by,bz));
+  else if (!world.has(key(bx,by,bz))) {
+    const d = new THREE.Vector3(bx,by,bz).sub(player.pos);
+    if (Math.abs(d.x) < 0.9 && Math.abs(d.z) < 0.9 && d.y > -1.9 && d.y < 0.9) return;
+    world.set(key(bx,by,bz), selected);
+  }
+  rebuild();
+}
+addEventListener('mousedown', e => {
+  if (!document.pointerLockElement) return;
+  interact(e.button === 0);
+});
+
+// ---------- 터치 조작 ----------
+const joy = { x: 0, y: 0 };
+let touchMode = true; // true = 파괴(⛏), false = 설치(🧱)
+
+if (isTouch) {
+  const joyEl = document.getElementById('joystick');
+  const stick = document.getElementById('stick');
+  let joyId = null;
+
+  joyEl.addEventListener('touchstart', e => {
+    joyId = e.changedTouches[0].identifier;
+    e.preventDefault();
+  }, { passive: false });
+
+  addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyId) {
+        const r = joyEl.getBoundingClientRect();
+        let dx = t.clientX - (r.left + 60), dy = t.clientY - (r.top + 60);
+        const len = Math.hypot(dx, dy);
+        if (len > 45) { dx = dx/len*45; dy = dy/len*45; }
+        stick.style.left = (35+dx) + 'px'; stick.style.top = (35+dy) + 'px';
+        joy.x = dx/45; joy.y = dy/45;
+      }
+    }
+  }, { passive: false });
+
+  addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyId) {
+        joyId = null; joy.x = 0; joy.y = 0;
+        stick.style.left = '35px'; stick.style.top = '35px';
+      }
+    }
+  });
+
+  // 화면 드래그로 시점 회전 + 짧은 탭으로 블록 상호작용
+  let lookId = null, lx = 0, ly = 0, moved = 0, tStart = 0;
+  renderer.domElement.addEventListener('touchstart', e => {
+    if (!playing || lookId !== null) return;
+    const t = e.changedTouches[0];
+    lookId = t.identifier; lx = t.clientX; ly = t.clientY; moved = 0; tStart = Date.now();
+  });
+  renderer.domElement.addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === lookId) {
+        const dx = t.clientX - lx, dy = t.clientY - ly;
+        moved += Math.abs(dx) + Math.abs(dy);
+        yaw -= dx * 0.005;
+        pitch = Math.max(-1.5, Math.min(1.5, pitch - dy * 0.005));
+        lx = t.clientX; ly = t.clientY;
+      }
+    }
+  });
+  renderer.domElement.addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === lookId) {
+        if (moved < 15 && Date.now() - tStart < 300) interact(touchMode); // 탭 = 상호작용
+        lookId = null;
+      }
+    }
+  });
+
+  // 버튼
+  const jumpBtn = document.getElementById('jumpBtn');
+  jumpBtn.addEventListener('touchstart', e => { e.preventDefault(); keys.Space = true; }, { passive: false });
+  jumpBtn.addEventListener('touchend', () => keys.Space = false);
+  const modeBtn = document.getElementById('modeBtn');
+  modeBtn.addEventListener('touchstart', e => {
+    e.preventDefault();
+    touchMode = !touchMode;
+    modeBtn.textContent = touchMode ? '⛏' : '🧱';
+  }, { passive: false });
+
+  // 핫바 탭으로 블록 선택
+  document.querySelectorAll('.slot').forEach(s => {
+    s.addEventListener('touchstart', e => {
+      e.preventDefault();
+      selected = +s.dataset.id;
+      document.querySelectorAll('.slot').forEach(x => x.classList.toggle('active', x === s));
+    }, { passive: false });
+  });
+}
+
+// ---------- 물리 & 충돌 ----------
+const solid = (x,y,z) => world.has(key(Math.round(x), Math.round(y), Math.round(z)));
+
+function collide(pos) {
+  // 플레이어: 폭 0.6, 키 1.8 (눈높이는 pos, 발은 pos.y-1.6)
+  const r = 0.3;
+  for (const ox of [-r, r]) for (const oz of [-r, r])
+    for (const oy of [-1.6, -0.8, 0.1])
+      if (solid(pos.x+ox, pos.y+oy, pos.z+oz)) return true;
+  return false;
+}
+
+let last = performance.now();
+function loop(now) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((now - last)/1000, 0.05); last = now;
+
+  // 이동 입력
+  const speed = 5;
+  const f = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+  const r = new THREE.Vector3(f.z, 0, -f.x);
+  const move = new THREE.Vector3();
+  if (keys.KeyW) move.add(f);
+  if (keys.KeyS) move.sub(f);
+  if (keys.KeyA) move.sub(r);
+  if (keys.KeyD) move.add(r);
+  // 터치 조이스틱
+  move.addScaledVector(f, -joy.y).addScaledVector(r, joy.x);
+  if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed);
+
+  player.vel.x = move.x; player.vel.z = move.z;
+  player.vel.y -= 20 * dt;                                  // 중력
+  if (keys.Space && player.onGround) { player.vel.y = 7.5; player.onGround = false; }
+
+  // 축별 이동 + 충돌
+  for (const axis of ['x','y','z']) {
+    const old = player.pos[axis];
+    player.pos[axis] += player.vel[axis] * dt;
+    if (collide(player.pos)) {
+      player.pos[axis] = old;
+      if (axis === 'y') {
+        if (player.vel.y < 0) player.onGround = true;
+        player.vel.y = 0;
+      }
+    } else if (axis === 'y' && player.vel.y < 0) player.onGround = false;
+  }
+  if (player.pos.y < -20) { player.pos.set(0, 15, 0); player.vel.set(0,0,0); } // 낙사 리스폰
+
+  camera.position.copy(player.pos);
+  camera.rotation.set(0,0,0);
+  camera.rotateY(yaw);
+  camera.rotateX(pitch);
+
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(loop);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
