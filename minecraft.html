@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>마크 데모 - Claude Craft</title>
 <style>
   body { margin: 0; overflow: hidden; font-family: monospace; }
@@ -37,7 +38,32 @@
   좌클릭 파괴 · 우클릭 설치 · 1~5 블록 선택
 </div>
 <div id="hud"></div>
-<div id="start"><b>⛏ Claude Craft</b><span>클릭해서 시작</span></div>
+<div id="start"><b>⛏ Claude Craft</b><span>탭해서 시작</span></div>
+
+<!-- 모바일 터치 UI -->
+<div id="joystick"><div id="stick"></div></div>
+<div id="btns">
+  <div class="tbtn" id="jumpBtn">⬆</div>
+  <div class="tbtn" id="modeBtn">⛏</div>
+</div>
+<style>
+  #joystick {
+    position: fixed; bottom: 90px; left: 20px; width: 120px; height: 120px;
+    border-radius: 50%; background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.4);
+    display: none; touch-action: none; z-index: 10;
+  }
+  #stick {
+    position: absolute; top: 35px; left: 35px; width: 50px; height: 50px;
+    border-radius: 50%; background: rgba(255,255,255,.5);
+  }
+  #btns { position: fixed; bottom: 100px; right: 20px; display: none; flex-direction: column; gap: 14px; z-index: 10; }
+  .tbtn {
+    width: 64px; height: 64px; border-radius: 50%; background: rgba(255,255,255,.2);
+    border: 2px solid rgba(255,255,255,.4); color: white; font-size: 28px;
+    display: flex; align-items: center; justify-content: center; touch-action: none;
+    user-select: none; -webkit-user-select: none;
+  }
+</style>
 
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
@@ -143,10 +169,23 @@ const keys = {};
 addEventListener('keydown', e => keys[e.code] = true);
 addEventListener('keyup', e => keys[e.code] = false);
 
+const isTouch = 'ontouchstart' in window;
+let playing = false;
 const startEl = document.getElementById('start');
-startEl.onclick = () => renderer.domElement.requestPointerLock();
+startEl.onclick = () => {
+  if (isTouch) {
+    playing = true;
+    startEl.style.display = 'none';
+    document.getElementById('joystick').style.display = 'block';
+    document.getElementById('btns').style.display = 'flex';
+    document.getElementById('info').innerHTML =
+      '왼쪽 조이스틱 이동 · 화면 드래그 시점<br>탭: 파괴/설치 (⛏버튼으로 전환) · ⬆점프 · 핫바 탭으로 블록 선택';
+  } else {
+    renderer.domElement.requestPointerLock();
+  }
+};
 document.addEventListener('pointerlockchange', () => {
-  startEl.style.display = document.pointerLockElement ? 'none' : 'flex';
+  if (!isTouch) startEl.style.display = document.pointerLockElement ? 'none' : 'flex';
 });
 addEventListener('mousemove', e => {
   if (!document.pointerLockElement) return;
@@ -154,25 +193,111 @@ addEventListener('mousemove', e => {
   pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * 0.002));
 });
 
-// 블록 설치/파괴
+// 블록 설치/파괴 공통 함수
 const ray = new THREE.Raycaster(); ray.far = 6;
-addEventListener('mousedown', e => {
-  if (!document.pointerLockElement) return;
+function interact(destroy) {
   ray.setFromCamera(new THREE.Vector2(0,0), camera);
   const hits = ray.intersectObjects(Object.values(meshes));
   if (!hits.length) return;
   const h = hits[0];
-  const p = h.point.clone().addScaledVector(h.face.normal, e.button === 0 ? -0.5 : 0.5);
+  const p = h.point.clone().addScaledVector(h.face.normal, destroy ? -0.5 : 0.5);
   const bx = Math.round(p.x), by = Math.round(p.y), bz = Math.round(p.z);
-  if (e.button === 0) world.delete(key(bx,by,bz));          // 파괴
-  else if (!world.has(key(bx,by,bz))) {                     // 설치
-    // 플레이어 몸이랑 겹치면 설치 금지
+  if (destroy) world.delete(key(bx,by,bz));
+  else if (!world.has(key(bx,by,bz))) {
     const d = new THREE.Vector3(bx,by,bz).sub(player.pos);
     if (Math.abs(d.x) < 0.9 && Math.abs(d.z) < 0.9 && d.y > -1.9 && d.y < 0.9) return;
     world.set(key(bx,by,bz), selected);
   }
   rebuild();
+}
+addEventListener('mousedown', e => {
+  if (!document.pointerLockElement) return;
+  interact(e.button === 0);
 });
+
+// ---------- 터치 조작 ----------
+const joy = { x: 0, y: 0 };
+let touchMode = true; // true = 파괴(⛏), false = 설치(🧱)
+
+if (isTouch) {
+  const joyEl = document.getElementById('joystick');
+  const stick = document.getElementById('stick');
+  let joyId = null;
+
+  joyEl.addEventListener('touchstart', e => {
+    joyId = e.changedTouches[0].identifier;
+    e.preventDefault();
+  }, { passive: false });
+
+  addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyId) {
+        const r = joyEl.getBoundingClientRect();
+        let dx = t.clientX - (r.left + 60), dy = t.clientY - (r.top + 60);
+        const len = Math.hypot(dx, dy);
+        if (len > 45) { dx = dx/len*45; dy = dy/len*45; }
+        stick.style.left = (35+dx) + 'px'; stick.style.top = (35+dy) + 'px';
+        joy.x = dx/45; joy.y = dy/45;
+      }
+    }
+  }, { passive: false });
+
+  addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyId) {
+        joyId = null; joy.x = 0; joy.y = 0;
+        stick.style.left = '35px'; stick.style.top = '35px';
+      }
+    }
+  });
+
+  // 화면 드래그로 시점 회전 + 짧은 탭으로 블록 상호작용
+  let lookId = null, lx = 0, ly = 0, moved = 0, tStart = 0;
+  renderer.domElement.addEventListener('touchstart', e => {
+    if (!playing || lookId !== null) return;
+    const t = e.changedTouches[0];
+    lookId = t.identifier; lx = t.clientX; ly = t.clientY; moved = 0; tStart = Date.now();
+  });
+  renderer.domElement.addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === lookId) {
+        const dx = t.clientX - lx, dy = t.clientY - ly;
+        moved += Math.abs(dx) + Math.abs(dy);
+        yaw -= dx * 0.005;
+        pitch = Math.max(-1.5, Math.min(1.5, pitch - dy * 0.005));
+        lx = t.clientX; ly = t.clientY;
+      }
+    }
+  });
+  renderer.domElement.addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === lookId) {
+        if (moved < 15 && Date.now() - tStart < 300) interact(touchMode); // 탭 = 상호작용
+        lookId = null;
+      }
+    }
+  });
+
+  // 버튼
+  const jumpBtn = document.getElementById('jumpBtn');
+  jumpBtn.addEventListener('touchstart', e => { e.preventDefault(); keys.Space = true; }, { passive: false });
+  jumpBtn.addEventListener('touchend', () => keys.Space = false);
+  const modeBtn = document.getElementById('modeBtn');
+  modeBtn.addEventListener('touchstart', e => {
+    e.preventDefault();
+    touchMode = !touchMode;
+    modeBtn.textContent = touchMode ? '⛏' : '🧱';
+  }, { passive: false });
+
+  // 핫바 탭으로 블록 선택
+  document.querySelectorAll('.slot').forEach(s => {
+    s.addEventListener('touchstart', e => {
+      e.preventDefault();
+      selected = +s.dataset.id;
+      document.querySelectorAll('.slot').forEach(x => x.classList.toggle('active', x === s));
+    }, { passive: false });
+  });
+}
 
 // ---------- 물리 & 충돌 ----------
 const solid = (x,y,z) => world.has(key(Math.round(x), Math.round(y), Math.round(z)));
@@ -200,7 +325,9 @@ function loop(now) {
   if (keys.KeyS) move.sub(f);
   if (keys.KeyA) move.sub(r);
   if (keys.KeyD) move.add(r);
-  move.normalize().multiplyScalar(speed);
+  // 터치 조이스틱
+  move.addScaledVector(f, -joy.y).addScaledVector(r, joy.x);
+  if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed);
 
   player.vel.x = move.x; player.vel.z = move.z;
   player.vel.y -= 20 * dt;                                  // 중력
