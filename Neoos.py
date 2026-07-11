@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Callable
 
 
-VERSION = "v0.4.1-beta"
+VERSION = "v0.4.1"
 
 CommandHandler = Callable[[list[str]], str]
 

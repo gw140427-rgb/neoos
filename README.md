@@ -9,7 +9,7 @@
 ![Release](https://img.shields.io/github/v/release/gw140427-rgb/neoos)
 
 ```
-NeoOS v0.4.1-beta 부팅 완료. 'help'로 명령어를 확인하세요.
+NeoOS v0.4.1 부팅 완료. 'help'로 명령어를 확인하세요.
 neo> install neofetch
 패키지 저장소에서 neofetch 검색 중...
 다운로드 중 [████████████████████] 100%
