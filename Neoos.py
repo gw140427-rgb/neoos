@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from typing import Callable
 
 
+VERSION = "v0.4.1-beta"
+
 CommandHandler = Callable[[list[str]], str]
 
 
@@ -175,7 +177,7 @@ class NeoOS:
 
 def run_shell() -> None:
     os = NeoOS()
-    print("NeoOS v0.4 부팅 완료. 'help'로 명령어를 확인하세요.")
+    print(f"NeoOS {VERSION} 부팅 완료. 'help'로 명령어를 확인하세요.")
 
     while os.running:
         try:

@@ -9,7 +9,7 @@
 ![Release](https://img.shields.io/github/v/release/gw140427-rgb/neoos)
 
 ```
-NeoOS v0.4 부팅 완료. 'help'로 명령어를 확인하세요.
+NeoOS v0.4.1-beta 부팅 완료. 'help'로 명령어를 확인하세요.
 neo> install neofetch
 패키지 저장소에서 neofetch 검색 중...
 다운로드 중 [████████████████████] 100%
@@ -68,7 +68,8 @@ python Neoos.py
 
 ## 📥 다운로드 / Download
 
-최신 버전은 [Releases](https://github.com/gw140427-rgb/neoos/releases)에서 받을 수 있습니다.
+최신 릴리즈는 GitHub Releases에서 받을 수 있습니다.
+Termux 설치 스크립트는 `scripts/termux_ubuntu_install.sh`를 사용하세요.
 
 ## 🤝 기여 / Contributing
 
