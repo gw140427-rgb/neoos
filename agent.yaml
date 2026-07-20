@@ -1,0 +1,16 @@
+# agent.yaml — everything here becomes durable state
+name: coding-agent
+instruction: |
+  Fix failing builds. Reproduce the failure on a
+  machine, patch the code, run the tests, and
+  deploy the fix.
+model:
+  provider_config: anthropic-prod
+  name: claude-4.6-opus
+machine_sources:
+  - machine_pool_name: sandbox-pool
+tools:
+  run_command:
+    default_policy: always_allow
+  deploy_service:
+    default_policy: always_ask   # a human approves every deploy
