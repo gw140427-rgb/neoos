@@ -1,7 +1,7 @@
 # NeoOS 🖥️
 
 > 🇰🇷 Python으로 만든 간단한 쉘(OS) 시뮬레이터 — 터미널에서 돌아가는 미니 가상 OS!
->
+> 
 > 🇺🇸 A tiny shell-like OS simulator written in Python. A mini virtual OS that runs in your terminal!
 
 ![Python](https://img.shields.io/badge/python-3.9+-blue?logo=python&logoColor=white)
@@ -9,7 +9,7 @@
 ![Release](https://img.shields.io/github/v/release/gw140427-rgb/neoos)
 
 ```
-NeoOS v0.4 부팅 완료. 'help'로 명령어를 확인하세요.
+NeoOS v0.4.2 Beta 부팅 완료. 'help'로 명령어를 확인하세요.
 neo> install neofetch
 패키지 저장소에서 neofetch 검색 중...
 다운로드 중 [████████████████████] 100%
@@ -35,22 +35,23 @@ python Neoos.py
 
 | 명령어 | 설명 |
 |--------|------|
-| `help` | 사용 가능한 명령어 전체 보기 |
+| `help` | 사용 가능한 명령어 전체 보기 (버전과 사용 예시 포함) |
 | `echo 글` | 입력한 텍스트 그대로 출력 |
 | `time` | 현재 UTC 시간 출력 |
 | `clear` | 화면 초기화 |
 | `exit` | NeoOS 종료 |
+| `version` | NeoOS 버전 출력 |
 
 ### 📁 파일 시스템 / File system
 
 | 명령어 | 설명 |
 |--------|------|
-| `ls` | 파일 목록 보기 |
+| `ls` | 파일 목록 보기 (파일 크기 표시) |
 | `touch 파일명` | 파일 생성 |
 | `cat 파일명` | 파일 내용 보기 |
 | `write 파일명 내용` | 파일 내용 덮어쓰기 |
-| `append 파일명 내용` | 파일 내용 추가 |
-| `rm 파일명` | 파일 삭제 |
+| `append 파일명 내용` | 파일 내용 추가 (기존 내용이 있으면 줄바꿈 후 추가) |
+| `rm 파일명` | 파일 삭제 (또는 `rm -f 파일명`으로 강제 삭제) |
 
 ### 📦 패키지 매니저 / Package manager
 
@@ -65,6 +66,13 @@ python Neoos.py
 |--------|------|
 | `calc 수식` | 간단한 계산기 (예: `calc 1+2*3`) |
 | `똥` | ??? 직접 쳐보세요 💩 |
+
+## 변경사항 요약 (v0.4.2 Beta)
+- 더 나은 `help` 출력 (버전/예시 추가)
+- `version` 명령 추가
+- 명령 실행 중 예외 발생 시 셸이 종료되지 않도록 전역 에러 처리 추가
+- 파일 명령 개선: `ls`에서 파일 크기 표시, `touch`가 기존 파일을 덮어쓰지 않음, `append`가 줄바꿈을 적절히 넣음, `rm`에 `-f` 옵션 지원
+- README 및 CHANGELOG 업데이트
 
 ## 📥 다운로드 / Download
 
