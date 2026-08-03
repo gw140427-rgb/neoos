@@ -21,8 +21,15 @@ jobs:
     - name: Log To AnyDesk
       run: |
         $anydesk = "$env:ProgramFiles (x86)\AnyDesk\AnyDesk.exe"
-        Start-Sleep -Seconds 5
-        $ID = & $anydesk --get-id
+        
+        # AnyDesk 서비스가 ID를 생성할 때까지 최대 30초 대기
+        $ID = ""
+        for ($i = 0; $i -lt 10; $i++) {
+            Start-Sleep -Seconds 3
+            $ID = cmd /c "`"$anydesk`" --get-id"
+            if ($ID -and $ID.Trim() -ne "") { break }
+        }
+
         Write-Host "===================================="
         Write-Host "AnyDesk ID: $ID"
         Write-Host "AnyDesk Password: joyzonetech"
