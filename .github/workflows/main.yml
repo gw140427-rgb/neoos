@@ -11,15 +11,18 @@ jobs:
     - name: Download & Install AnyDesk
       run: |
         Invoke-WebRequest -Uri "https://download.anydesk.com/AnyDesk.exe" -OutFile "AnyDesk.exe"
-        .\AnyDesk.exe --install "C:\Program Files (x86)\AnyDesk" --start-with-win --silent
-        
+        Start-Process -FilePath ".\AnyDesk.exe" -ArgumentList "--install `"$env:ProgramFiles (x86)\AnyDesk`" --start-with-win --silent" -Wait
+
     - name: Setup AnyDesk Password
       run: |
-        cmd /c "echo joyzonetech| ''C:\Program Files (x86)\AnyDesk\AnyDesk.exe'' --set-password"
-        
+        $anydesk = "$env:ProgramFiles (x86)\AnyDesk\AnyDesk.exe"
+        cmd /c "echo joyzonetech | `"$anydesk`" --set-password"
+
     - name: Log To AnyDesk
       run: |
-        $ID = cmd /c "''C:\Program Files (x86)\AnyDesk\AnyDesk.exe'' --get-id"
+        $anydesk = "$env:ProgramFiles (x86)\AnyDesk\AnyDesk.exe"
+        Start-Sleep -Seconds 5
+        $ID = & $anydesk --get-id
         Write-Host "===================================="
         Write-Host "AnyDesk ID: $ID"
         Write-Host "AnyDesk Password: joyzonetech"
