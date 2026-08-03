@@ -1,0 +1,34 @@
+name: Windows Cloud PC - AnyDesk
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Download & Install AnyDesk
+      run: |
+        # AnyDesk 다운로드
+        Invoke-WebRequest -Uri "https://download.anydesk.com/AnyDesk.exe" -OutFile "AnyDesk.exe"
+        
+    - name: Setup AnyDesk Password & Service
+      run: |
+        # AnyDesk 비밀번호 설정 (원하는 비밀번호로 변경 가능)
+        cmd /c "echo joyzonetech | .\AnyDesk.exe --set-password"
+        
+    - name: Log To AnyDesk
+      run: |
+        # AnyDesk ID 추출 및 출력
+        $ID = .\AnyDesk.exe --get-id
+        Write-Host "===================================="
+        Write-Host "AnyDesk ID: $ID"
+        Write-Host "AnyDesk Password: joyzonetech"
+        Write-Host "===================================="
+
+    - name: Keep Alive (Loop)
+      run: |
+        # 워크플로가 바로 종료되지 않도록 6시간 동안 유지
+        $timeout = 21600 # 초 단위 (6시간)
+        Start-Sleep -Seconds $timeout
