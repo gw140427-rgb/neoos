@@ -1,0 +1,22 @@
+name: Windows 11 Workflow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show System Info
+        shell: powershell
+        run: |
+          systeminfo
+          Get-ComputerInfo | Select WindowsProductName, WindowsVersion
+
+      - name: List Files
+        shell: powershell
+        run: |
+          Get-ChildItem
