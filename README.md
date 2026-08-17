@@ -1,87 +1,55 @@
-# NeoOS 🖥️
+# NeoOS
 
-> 🇰🇷 Python으로 만든 간단한 쉘(OS) 시뮬레이터 — 터미널에서 돌아가는 미니 가상 OS!
-> 
-> 🇺🇸 A tiny shell-like OS simulator written in Python. A mini virtual OS that runs in your terminal!
+Python으로 만든 교육용 셸 OS 시뮬레이터.
 
-![Python](https://img.shields.io/badge/python-3.9+-blue?logo=python&logoColor=white)
-![License](https://img.shields.io/badge/dependencies-zero-brightgreen)
-![Release](https://img.shields.io/github/v/release/gw140427-rgb/neoos)
+## 개요
 
-```
-NeoOS v0.4.2 Beta 부팅 완료. 'help'로 명령어를 확인하세요.
-neo> install neofetch
-패키지 저장소에서 neofetch 검색 중...
-다운로드 중 [████████████████████] 100%
-✅ neofetch 설치 완료!
-neo> 똥
-      💩💩💩
-    💩💩💩💩💩
-  💩💩💩💩💩💩💩
-💩💩💩💩💩💩💩💩💩
-```
+NeoOS는 메모리 기반의 가상 파일시스템과 명령어 셸을 제공하는 미니 운영체제 시뮬레이터입니다. 실제 OS 동작 원리를 학습하기 위한 교육 목적으로 개발되었습니다.
 
-## 🚀 실행 방법 / Usage
+## 요구사항
+
+- Python 3.10+
+- 외부 패키지 불필요 (표준 라이브러리만 사용)
+
+## 실행 방법
 
 ```bash
-python Neoos.py
+python3 doc_bf43c1cc2757_Neoos.py
 ```
 
-설치 필요 없음! 파이썬만 있으면 됩니다. (No dependencies — pure Python!)
+부팅 후 `neo>` 프롬프트에서 명령어를 입력합니다.
 
-## ⌨️ 명령어 / Commands
+## 명령어 목록
 
-### ⚙️ 기본 명령어 / Basic
+| 명령어 | 설명 | 예시 |
+|--------|------|------|
+| `help` | 명령어 목록 출력 | `help` |
+| `echo` | 텍스트 출력 | `echo 안녕하세요` |
+| `time` | 현재 UTC 시간 | `time` |
+| `clear` | 화면 정리 | `clear` |
+| `exit` | NeoOS 종료 | `exit` |
+| `calc` | 계산기 | `calc 2 + 3` |
+| `ls` | 파일 목록 | `ls`, `ls 파일명` |
+| `touch` | 파일 생성 | `touch new.txt` |
+| `cat` | 파일 내용 보기 | `cat new.txt` |
+| `write` | 파일 내용 덮어쓰기 | `write file.txt 내용` |
+| `append` | 파일 내용 추가 | `append file.txt 추가내용` |
+| `rm` | 파일 삭제 | `rm file.txt`, `rm -f file.txt` |
+| `install` | 가짜 패키지 설치 | `install 패키지명` |
+| `pkgs` | 설치된 패키지 목록 | `pkgs` |
+| `pwd` | 현재 경로 | `pwd` |
+| `whoami` | 현재 사용자 | `whoami` |
+| `uname` | 시스템 정보 | `uname` |
+| `history` | 명령어 기록 | `history`, `history 5` |
+| `version` | 버전 정보 | `version` |
+| `똥` | ??? | `똥` |
 
-| 명령어 | 설명 |
-|--------|------|
-| `help` | 사용 가능한 명령어 전체 보기 (버전과 사용 예시 포함) |
-| `echo 글` | 입력한 텍스트 그대로 출력 |
-| `time` | 현재 UTC 시간 출력 |
-| `clear` | 화면 초기화 |
-| `exit` | NeoOS 종료 |
-| `version` | NeoOS 버전 출력 |
+## 테스트
 
-### 📁 파일 시스템 / File system
+```bash
+python3 -m unittest test_neoos -v
+```
 
-| 명령어 | 설명 |
-|--------|------|
-| `ls` | 파일 목록 보기 (파일 크기 표시) |
-| `touch 파일명` | 파일 생성 |
-| `cat 파일명` | 파일 내용 보기 |
-| `write 파일명 내용` | 파일 내용 덮어쓰기 |
-| `append 파일명 내용` | 파일 내용 추가 (기존 내용이 있으면 줄바꿈 후 추가) |
-| `rm 파일명` | 파일 삭제 (또는 `rm -f 파일명`으로 강제 삭제) |
+## 라이선스
 
-### 📦 패키지 매니저 / Package manager
-
-| 명령어 | 설명 |
-|--------|------|
-| `install 패키지명` | 가짜 패키지 설치 (진행바 애니메이션 ✨) |
-| `pkgs` | 설치된 패키지 목록 |
-
-### 🧮 기타 / Etc
-
-| 명령어 | 설명 |
-|--------|------|
-| `calc 수식` | 간단한 계산기 (예: `calc 1+2*3`) |
-| `똥` | ??? 직접 쳐보세요 💩 |
-
-## 변경사항 요약 (v0.4.2 Beta)
-- 더 나은 `help` 출력 (버전/예시 추가)
-- `version` 명령 추가
-- 명령 실행 중 예외 발생 시 셸이 종료되지 않도록 전역 에러 처리 추가
-- 파일 명령 개선: `ls`에서 파일 크기 표시, `touch`가 기존 파일을 덮어쓰지 않음, `append`가 줄바꿈을 적절히 넣음, `rm`에 `-f` 옵션 지원
-- README 및 CHANGELOG 업데이트
-
-## 📥 다운로드 / Download
-
-최신 버전은 [Releases](https://github.com/gw140427-rgb/neoos/releases)에서 받을 수 있습니다.
-
-## 🤝 기여 / Contributing
-
-이슈와 PR 환영합니다! Issues and PRs are welcome!
-
----
-
-**Keywords**: python shell simulator, os simulator, terminal, cli, 파이썬 쉘, 미니 OS, toy os, educational
+educational / personal use
