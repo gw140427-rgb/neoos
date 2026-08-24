@@ -25,7 +25,7 @@ if ! command -v proot-distro >/dev/null 2>&1; then
   exit 1
 fi
 
-if proot-distro list | grep -q '^ubuntu$'; then
+if proot-distro list | grep -qE '(^|[[:space:]])ubuntu([[:space:]]|$)'; then
   log "Ubuntu 배포판이 이미 설치되어 있습니다."
 else
   log "Ubuntu 배포판 설치"
@@ -61,8 +61,11 @@ INITEOF
 chmod +x "$HOME/.termux-ubuntu-init.sh"
 
 log "Ubuntu 내부 초기 설정 실행"
-proot-distro login ubuntu -- bash /root/.termux-ubuntu-init.sh || {
-  warn "초기 설정 실행 중 오류가 발생했습니다. 수동 실행: proot-distro login ubuntu -- bash /root/.termux-ubuntu-init.sh"
+# Termux의 $HOME 을 게스트의 /host-home 에 마운트해서 스크립트를 실행한다.
+proot-distro login ubuntu \
+  --bind "/data/data/com.termux/files/home:/host-home" \
+  -- bash /host-home/.termux-ubuntu-init.sh || {
+  warn "초기 설정 실행 중 오류가 발생했습니다. 수동 실행: proot-distro login ubuntu -- bash $HOME/.termux-ubuntu-init.sh"
   exit 1
 }
 

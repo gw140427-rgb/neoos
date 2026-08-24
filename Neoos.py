@@ -1,5 +1,7 @@
 """NeoOS: tiny educational shell-like OS simulator."""
 
+import ast
+import operator
 import random
 import time
 import sys
@@ -11,6 +13,32 @@ from typing import Callable
 CommandHandler = Callable[[list[str]], str]
 
 VERSION = "v0.4.2 Beta"
+
+_BIN_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod,
+}
+
+_UNARY_OPS = {
+    ast.UAdd: operator.pos,
+    ast.USub: operator.neg,
+}
+
+
+def _safe_eval(node: ast.AST) -> float | int:
+    if isinstance(node, ast.Expression):
+        return _safe_eval(node.body)
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.BinOp) and type(node.op) in _BIN_OPS:
+        return _BIN_OPS[type(node.op)](_safe_eval(node.left), _safe_eval(node.right))
+    if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY_OPS:
+        return _UNARY_OPS[type(node.op)](_safe_eval(node.operand))
+    raise ValueError("허용되지 않는 식입니다.")
 
 
 @dataclass
@@ -116,17 +144,19 @@ class NeoOS:
         self._running = False
         return "NeoOS를 종료합니다."
 
-    def _cmd_calc(self, args):
+    def _cmd_calc(self, args: list[str]) -> str:
         try:
             expr = " ".join(args)
-            allowed = "0123456789+-*/(). "
-            if not all(c in allowed for c in expr):
-                return "허용되지 않은 입력"
-            return str(eval(expr, {"__builtins__": None}, {}))
+            if not expr:
+                return "사용법: calc 2 + 3"
+            tree = ast.parse(expr, mode="eval")
+            return str(_safe_eval(tree))
+        except ZeroDivisionError:
+            return "0으로 나눌 수 없습니다."
         except Exception:
             return "계산 오류"
 
-    def _cmd_ls(self, args):
+    def _cmd_ls(self, args: list[str]) -> str:
         # ls 또는 ls 파일명
         if not self._files:
             return "파일 없음"
@@ -143,7 +173,7 @@ class NeoOS:
             lines.append(f"{name:<20} {size:6d} bytes")
         return "\n".join(lines)
 
-    def _cmd_touch(self, args):
+    def _cmd_touch(self, args: list[str]) -> str:
         if not args:
             return "파일 이름 필요"
         name = args[0]
@@ -152,12 +182,14 @@ class NeoOS:
         self._files[name] = ""
         return f"{args[0]} 생성됨"
 
-    def _cmd_cat(self, args):
+    def _cmd_cat(self, args: list[str]) -> str:
         if not args:
             return "파일 이름 필요"
-        return self._files.get(args[0], "파일 없음")
+        if args[0] not in self._files:
+            return f"{args[0]} 파일 없음"
+        return self._files[args[0]]
 
-    def _cmd_rm(self, args):
+    def _cmd_rm(self, args: list[str]) -> str:
         if not args:
             return "파일 이름 필요"
         force = False
@@ -174,19 +206,20 @@ class NeoOS:
         del self._files[name]
         return f"{name} 삭제됨"
 
-    def _cmd_write(self, args):
+    def _cmd_write(self, args: list[str]) -> str:
         if len(args) < 2:
             return "사용법: write 파일명 내용"
         name, content = args[0], " ".join(args[1:])
         self._files[name] = content
         return f"{name}에 저장됨"
 
-    def _cmd_append(self, args):
+    def _cmd_append(self, args: list[str]) -> str:
         if len(args) < 2:
             return "사용법: append 파일명 내용"
         name, content = args[0], " ".join(args[1:])
         if name not in self._files:
-            return "파일 없음. 먼저 touch 하세요."
+            self._files[name] = content
+            return f"{name}에 추가됨"
         # 기존 내용이 비어있지 않으면 줄바꿈을 넣고 추가
         if self._files[name]:
             self._files[name] += "\n" + content
@@ -194,7 +227,7 @@ class NeoOS:
             self._files[name] = content
         return f"{name}에 추가됨"
 
-    def _cmd_install(self, args):
+    def _cmd_install(self, args: list[str]) -> str:
         if not args:
             return "사용법: install 패키지명"
         pkg = args[0]
@@ -211,15 +244,15 @@ class NeoOS:
         self._packages.add(pkg)
         return f"✅ {pkg} 설치 완료!"
 
-    def _cmd_pkgs(self, args):
+    def _cmd_pkgs(self, _: list[str]) -> str:
         if not self._packages:
             return "설치된 패키지 없음. 'install 패키지명' 으로 설치하세요."
         return "\n".join(f"📦 {p}" for p in sorted(self._packages))
 
-    def _cmd_version(self, args):
+    def _cmd_version(self, _: list[str]) -> str:
         return f"NeoOS {VERSION}"
 
-    def _cmd_poop(self, args):
+    def _cmd_poop(self, _: list[str]) -> str:
         return "\n".join(
             [
                 "      💩💩💩",
@@ -239,7 +272,7 @@ def run_shell() -> None:
     while neo.running:
         try:
             line = input("neo> ")
-        except EOFError:
+        except (EOFError, KeyboardInterrupt):
             print()
             break
 

@@ -14,7 +14,7 @@ NeoOS는 메모리 기반의 가상 파일시스템과 명령어 셸을 제공�
 ## 실행 방법
 
 ```bash
-python3 doc_bf43c1cc2757_Neoos.py
+python3 Neoos.py
 ```
 
 부팅 후 `neo>` 프롬프트에서 명령어를 입력합니다.
@@ -33,9 +33,9 @@ python3 doc_bf43c1cc2757_Neoos.py
 | `touch` | 파일 생성 | `touch new.txt` |
 | `cat` | 파일 내용 보기 | `cat new.txt` |
 | `write` | 파일 내용 덮어쓰기 | `write file.txt 내용` |
-| `append` | 파일 내용 추가 | `append file.txt 추가내용` |
+| `append` | 파일 내용 추가 (없으면 생성) | `append file.txt 추가내용` |
 | `rm` | 파일 삭제 | `rm file.txt`, `rm -f file.txt` |
-| `install` | 가짜 패키지 설치 | `install 패키지명` |
+| `install` | 가짜 패키지 설치 (진행바) | `install 패키지명` |
 | `pkgs` | 설치된 패키지 목록 | `pkgs` |
 | `pwd` | 현재 경로 | `pwd` |
 | `whoami` | 현재 사용자 | `whoami` |
@@ -52,4 +52,4 @@ python3 -m unittest test_neoos -v
 
 ## 라이선스
 
-educational / personal use
+MIT License - [LICENSE](LICENSE) 참고
