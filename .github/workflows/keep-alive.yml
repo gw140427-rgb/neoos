@@ -1,0 +1,25 @@
+name: Keep NeoOS awake
+
+# Render 무료 티어(Free)는 15분 동안 트래픽이 없으면 서버가 sleep 됩니다.
+# 이 워크플로가 10분마다 서버에 ping을 보내 잠들지 않게 유지합니다.
+# 참고: Render는 완전한 24/7 상시 가동을 무료 티어에서 보장하지 않으나,
+#       이 방법으로 실제 운영 시 sleep을 최소화/거의 방지할 수 있습니다.
+
+on:
+  schedule:
+    # 매 10분 (UTC) - Render sleep 임계값(15분)보다 짧은 간격
+    - cron: "*/10 * * * *"
+  workflow_dispatch: # 수동 실행 옵션
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping NeoOS
+        run: |
+          curl -s -o /dev/null -w "ping status: %{http_code} (%.2f s)\n" --max-time 60 \
+            "https://neoos-1.onrender.com/"
+      - name: Ping terms (DB/페이지 워밍)
+        run: |
+          curl -s -o /dev/null -w "terms status: %{http_code}\n" --max-time 60 \
+            "https://neoos-1.onrender.com/terms"
