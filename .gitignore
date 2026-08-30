@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# NeoOS 데이터 (계정 DB, 로컬 데이터)
+database.db
+database.db-*
+
+# 로컬 볼륨 (dockurr windows 등)
+windows/
+
+# 로그 등
+*.log

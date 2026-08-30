@@ -3,7 +3,9 @@
 실행: python3 -m unittest test_neoos -v
 """
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from Neoos import NeoOS, VERSION
 
@@ -91,6 +93,136 @@ class NeoOSTestCase(unittest.TestCase):
 
     def test_null_bytes_are_stripped(self):
         self.assertEqual(self.os.execute_line("\x00echo 하이\x00"), "하이")
+
+    def test_register_new_account(self):
+        self.assertEqual(self.os.execute_line("register bob secret"), "bob 계정이 생성되었습니다.")
+
+    def test_register_requires_args(self):
+        self.assertIn("사용법", self.os.execute_line("register"))
+
+    def test_register_duplicate(self):
+        self.os.execute_line("register bob secret")
+        self.assertIn("이미 존재", self.os.execute_line("register bob other"))
+
+    def test_login_success(self):
+        self.os.execute_line("register bob secret")
+        self.assertEqual(self.os.execute_line("login bob secret"), "bob 님, 환영합니다! NeoOS에 로그인했습니다.")
+        self.assertEqual(self.os.current_user, "bob")
+
+    def test_login_wrong_password(self):
+        self.os.execute_line("register bob secret")
+        self.assertIn("로그인 실패", self.os.execute_line("login bob wrong"))
+        self.assertIsNone(self.os.current_user)
+
+    def test_login_unknown_user(self):
+        self.assertIn("로그인 실패", self.os.execute_line("login ghost x"))
+
+    def test_whoami_when_not_logged_in(self):
+        self.assertEqual(self.os.execute_line("whoami"), "로그인하지 않았습니다.")
+
+    def test_whoami_when_logged_in(self):
+        self.os.execute_line("login admin admin")
+        self.assertEqual(self.os.execute_line("whoami"), "admin")
+
+    def test_logout(self):
+        self.os.execute_line("login admin admin")
+        self.assertEqual(self.os.execute_line("logout"), "admin 님이 로그아웃했습니다.")
+        self.assertEqual(self.os.execute_line("whoami"), "로그인하지 않았습니다.")
+
+    def test_logout_when_not_logged_in(self):
+        self.assertEqual(self.os.execute_line("logout"), "로그인 상태가 아닙니다.")
+
+    def test_passwd_requires_login(self):
+        self.assertIn("로그인한 상태에서만", self.os.execute_line("passwd newpass"))
+
+    def test_passwd_changes_password(self):
+        self.os.execute_line("login admin admin")
+        self.assertEqual(self.os.execute_line("passwd admin123"), "비밀번호가 변경되었습니다.")
+        self.os.execute_line("logout")
+        self.assertIn("로그인 실패", self.os.execute_line("login admin admin"))
+        self.assertIn("환영합니다", self.os.execute_line("login admin admin123"))
+
+    def test_users_lists_accounts(self):
+        result = self.os.execute_line("users")
+        self.assertIn("admin", result)
+
+    def test_register_short_password_rejected(self):
+        self.assertIn("4자 이상", self.os.execute_line("register bob ab"))
+
+    def test_register_username_with_space_rejected(self):
+        # 셸은 공백으로 인자를 나누므로, 사용자명에 공백이 들어가면 2+개 인자로 분리됨.
+        result = self.os.execute_line("register 'bob name' secret")
+        # 출생연도 자리에 'name'이 들어가 숫자 파싱에서 걸림 -> 가입 실패
+        self.assertNotIn("계정이 생성되었습니다", result)
+
+    def test_register_adult_no_parent_consent_needed(self):
+        self.os.execute_line("register adult1 secret 1990")
+        self.assertEqual(self.os.execute_line("login adult1 secret"), "adult1 님, 환영합니다! NeoOS에 로그인했습니다.")
+
+    def test_register_minor_requires_consent(self):
+        result = self.os.execute_line("register kid secret 2016")
+        self.assertIn("부모 동의", result)
+        self.assertIn("만 14세", result)
+
+    def test_register_minor_with_consent(self):
+        self.os.execute_line("register kid2 secret 2016 동의")
+        self.assertEqual(self.os.execute_line("login kid2 secret"), "kid2 님, 환영합니다! NeoOS에 로그인했습니다.")
+
+    def test_register_minor_consent_denied(self):
+        result = self.os.execute_line("register kid3 secret 2016 아니")
+        self.assertIn("부모 동의가 거부", result)
+        # 아직 로그인 불가
+        self.assertIsNone(self.os.current_user)
+
+    def test_forgot_requires_args(self):
+        self.assertIn("사용법", self.os.execute_line("forgot bob"))
+
+    def test_forgot_unknown_user(self):
+        self.assertIn("존재하지 않는 사용자", self.os.execute_line("forgot ghost x"))
+
+    def test_forgot_wrong_answer(self):
+        self.os.execute_line("register bob secret 1995 동의 내강아지")
+        self.assertIn("올바르지 않습니다", self.os.execute_line("forgot bob 엉뚱한답"))
+
+    def test_forgot_issues_temp_password(self):
+        self.os.execute_line("register bob secret 1995 동의 내강아지")
+        result = self.os.execute_line("forgot bob 내강아지")
+        self.assertIn("임시 비밀번호가 발급되었습니다", result)
+        # 기존 비밀번호로는 로그인 불가
+        self.assertIn("로그인 실패", self.os.execute_line("login bob secret"))
+
+    def test_resetpw_requires_admin(self):
+        self.assertEqual(self.os.execute_line("resetpw bob xxxx"), "관리자(admin)만 사용할 수 있습니다.")
+
+    def test_resetpw_as_admin(self):
+        self.os.execute_line("login admin admin")
+        self.os.execute_line("register bob secret")
+        self.assertEqual(self.os.execute_line("resetpw bob newpass"), "bob 의 비밀번호가 관리자에 의해 초기화되었습니다.")
+        self.assertIn("로그인 실패", self.os.execute_line("login bob secret"))
+        self.assertIn("환영합니다", self.os.execute_line("login bob newpass"))
+
+    def test_accounts_persist_in_database(self):
+        # 실제 DB 파일에 계정이 저장되고, 재시작 후에도 유지되는지 확인
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "neoos.db")
+            neo1 = NeoOS(db_path=db_path)
+            self.assertIn("계정이 생성되었습니다", neo1.execute_line("register bob secret"))
+            neo1.close()
+
+            # 새 인스턴스로 재오픈: 계정이 DB에서 복원되어야 함
+            neo2 = NeoOS(db_path=db_path)
+            self.assertIn("로그인 실패", neo2.execute_line("login bob wrong"))
+            self.assertIn("환영합니다", neo2.execute_line("login bob secret"))
+            neo2.close()
+
+    def test_password_never_stored_in_plaintext(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = str(Path(tmp) / "neoos.db")
+            neo = NeoOS(db_path=db_path)
+            neo.execute_line("register bob secret")
+            neo.close()
+            raw = Path(db_path).read_bytes()
+            self.assertNotIn(b"secret", raw, "비밀번호 평문이 DB에 저장되면 안 됩니다.")
 
 
 if __name__ == "__main__":

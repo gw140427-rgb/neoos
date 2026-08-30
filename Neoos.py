@@ -1,18 +1,23 @@
 """NeoOS: tiny educational shell-like OS simulator."""
 
 import ast
+import hashlib
 import operator
+import os
 import random
+import secrets
+import sqlite3
 import time
 import sys
 import traceback
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable
 
 CommandHandler = Callable[[list[str]], str]
 
-VERSION = "v0.4.2 Beta"
+VERSION = "v0.5.0 Beta"
 
 _BIN_OPS = {
     ast.Add: operator.add,
@@ -49,12 +54,102 @@ class Command:
 
 
 class NeoOS:
-    def __init__(self) -> None:
+    def __init__(self, db_path: str | None = None) -> None:
         self._running = True
         self._commands: dict[str, Command] = {}
         self._files: dict[str, str] = {}
         self._packages: set[str] = set()
+        self._current_user: str | None = None
+        # 실제 계정 저장 (SQLite). db_path가 없으면 메모리 전용 (테스트/교육용).
+        self._db_path = db_path
+        self._conn: sqlite3.Connection | None = None
+        self._users: dict[str, dict] = {}
+        self._init_db()
+        self._ensure_admin()
         self._register_builtin_commands()
+
+    # ------------------------------------------------------------------
+    # 데이터베이스 (계정 실제 저장)
+    # ------------------------------------------------------------------
+    def _init_db(self) -> None:
+        if self._db_path is None:
+            return  # 메모리 모드: _users dict에 저장
+        self._conn = sqlite3.connect(self._db_path)
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                username   TEXT PRIMARY KEY,
+                password   TEXT NOT NULL,
+                birth_year INTEGER,
+                parent_consent INTEGER DEFAULT 0,
+                recovery   TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        self._conn.commit()
+        self._load_users_from_db()
+
+    def _load_users_from_db(self) -> None:
+        if self._conn is None:
+            return
+        for row in self._conn.execute("SELECT username, password, birth_year, parent_consent, recovery FROM users"):
+            username, password, birth_year, parent_consent, recovery = row
+            self._users[username] = {
+                "password": password,
+                "birth_year": birth_year,
+                "parent_consent": bool(parent_consent),
+                "recovery": recovery,
+            }
+
+    def _save_user_to_db(self, username: str) -> None:
+        if self._conn is None:
+            return
+        u = self._users[username]
+        self._conn.execute(
+            "INSERT OR REPLACE INTO users (username, password, birth_year, parent_consent, recovery, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                username,
+                u["password"],
+                u["birth_year"],
+                int(u["parent_consent"]),
+                u["recovery"],
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        self._conn.commit()
+
+    def _remove_user_from_db(self, username: str) -> None:
+        if self._conn is None:
+            return
+        self._conn.execute("DELETE FROM users WHERE username = ?", (username,))
+        self._conn.commit()
+
+    def close(self) -> None:
+        if self._conn is not None:
+            self._conn.close()
+
+    @staticmethod
+    def _hash_password(password: str) -> str:
+        # 보안 강화: SHA-256 해시 (평문은 절대 저장하지 않음)
+        return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+    def _ensure_admin(self) -> None:
+        # 기본 관리자 계정 (첫 실행 시에만 생성)
+        if "admin" not in self._users:
+            self._users["admin"] = {
+                "password": self._hash_password("admin"),
+                "birth_year": None,
+                "parent_consent": True,
+                "recovery": None,
+            }
+            if self._conn is not None:
+                self._save_user_to_db("admin")
+
+    @property
+    def current_user(self) -> str | None:
+        return self._current_user
 
     @property
     def running(self) -> bool:
@@ -84,6 +179,16 @@ class NeoOS:
         self._register("pkgs", "설치된 패키지 목록", self._cmd_pkgs)
         self._register("version", "NeoOS 버전 정보 출력", self._cmd_version)
         self._register("똥", "???", self._cmd_poop)
+
+        # 계정/로그인 기능
+        self._register("register", "새 계정 생성 (register 사용자명 비밀번호 [출생연도] [회복질문답])", self._cmd_register)
+        self._register("login", "로그인 (login 사용자명 비밀번호)", self._cmd_login)
+        self._register("logout", "로그아웃", self._cmd_logout)
+        self._register("whoami", "현재 로그인한 사용자 출력", self._cmd_whoami)
+        self._register("passwd", "비밀번호 변경 (passwd 새비밀번호)", self._cmd_passwd)
+        self._register("users", "등록된 사용자 목록", self._cmd_users)
+        self._register("forgot", "비밀번호 찾기 (forgot 사용자명 응답)", self._cmd_forgot)
+        self._register("resetpw", "비밀번호 초기화 (관리자 전용)", self._cmd_resetpw)
 
     def execute_line(self, line: str) -> str:
         # 입력 정리 (^@ 같은 거 제거)
@@ -264,22 +369,179 @@ class NeoOS:
             ]
         )
 
+    def _cmd_register(self, args: list[str]) -> str:
+        """register 사용자명 비밀번호 [출생연도] [회복질문답]
 
-def run_shell() -> None:
-    neo = NeoOS()
+        14세 미만(2013년 이후 출생)은 부모 동의가 필요합니다.
+        출생연도를 생략하면 자동으로 14세 이상으로 간주합니다.
+        """
+        if len(args) < 2:
+            return "사용법: register 사용자명 비밀번호 [출생연도] [회복질문답]"
+        name, password = args[0], args[1]
+        if len(name) < 2:
+            return "사용자명은 2자 이상이어야 합니다."
+        if len(password) < 4:
+            return "비밀번호는 4자 이상이어야 합니다."
+        if name in self._users:
+            return f"{name} 계정이 이미 존재합니다."
+        if any(ch.isspace() for ch in name):
+            return "사용자명에 공백을 포함할 수 없습니다."
+
+        # 부모 동의 처리
+        current_year = datetime.now(timezone.utc).year
+        birth_year = None
+        parent_consent = None
+        recovery = None
+
+        if len(args) >= 3:
+            try:
+                birth_year = int(args[2])
+            except ValueError:
+                return "출생연도는 숫자(예: 2012)여야 합니다."
+            age = current_year - birth_year
+            if age < 14:
+                if len(args) < 4:
+                    return (
+                        f"{age}세는 만 14세 미만입니다.\n"
+                        "부모 동의가 필요합니다.\n"
+                        "사용법: register 사용자명 비밀번호 출생연도 부모동의(예: 동의)"
+                    )
+                if args[3] in ("동의", "agree", "yes", "y", "네"):
+                    parent_consent = True
+                else:
+                    parent_consent = False
+                    return "부모 동의가 거부되었습니다. 만 14세 미만은 부모 동의가 있어야 가입할 수 있습니다."
+            else:
+                parent_consent = True
+            # 회복 질문 답
+            if len(args) >= 5:
+                recovery = " ".join(args[4:])
+
+        if parent_consent is None:
+            parent_consent = True
+
+        self._users[name] = {
+            "password": self._hash_password(password),
+            "birth_year": birth_year,
+            "parent_consent": parent_consent,
+            "recovery": recovery,
+        }
+        self._save_user_to_db(name)
+        note = ""
+        if parent_consent is False:
+            note = "\n(부모 동의 대기 중: 아직 로그인할 수 없습니다.)"
+        return f"{name} 계정이 생성되었습니다.{note}"
+
+    def _cmd_login(self, args: list[str]) -> str:
+        if len(args) < 2:
+            return "사용법: login 사용자명 비밀번호"
+        name, password = args[0], args[1]
+        user = self._users.get(name)
+        if user is None or user["password"] != self._hash_password(password):
+            return "로그인 실패: 사용자명 또는 비밀번호가 올바르지 않습니다."
+        if user.get("parent_consent") is False:
+            return "부모 동의가 완료되지 않은 계정입니다. 관리자에게 문의하세요."
+        if user.get("parent_consent") is None and name != "admin":
+            return "부모 동의 상태를 확인할 수 없습니다. 관리자에게 문의하세요."
+        self._current_user = name
+        return f"{name} 님, 환영합니다! NeoOS에 로그인했습니다."
+
+    def _cmd_logout(self, _: list[str]) -> str:
+        if self._current_user is None:
+            return "로그인 상태가 아닙니다."
+        name = self._current_user
+        self._current_user = None
+        return f"{name} 님이 로그아웃했습니다."
+
+    def _cmd_whoami(self, _: list[str]) -> str:
+        if self._current_user is None:
+            return "로그인하지 않았습니다."
+        return self._current_user
+
+    def _cmd_passwd(self, args: list[str]) -> str:
+        if self._current_user is None:
+            return "로그인한 상태에서만 비밀번호를 변경할 수 있습니다."
+        if len(args) < 1:
+            return "사용법: passwd 새비밀번호"
+        if len(args[0]) < 4:
+            return "비밀번호는 4자 이상이어야 합니다."
+        self._users[self._current_user]["password"] = self._hash_password(args[0])
+        if self._conn is not None:
+            self._save_user_to_db(self._current_user)
+        return "비밀번호가 변경되었습니다."
+
+    def _cmd_users(self, args: list[str]) -> str:
+        # users [전체] : 전체 보기는 관리자와 서버 소유자만
+        if not self._users:
+            return "등록된 사용자 없음"
+        if args and args[0] == "--all" and self._current_user == "admin":
+            lines = []
+            for name in sorted(self._users):
+                u = self._users[name]
+                age_txt = f"출생 {u['birth_year']}" if u["birth_year"] else "연령 미확인"
+                consent_txt = "부모동의" if u["parent_consent"] else "미동의"
+                lines.append(f"👤 {name} | {age_txt} | {consent_txt}")
+            return "\n".join(lines)
+        return "\n".join(f"👤 {name}" for name in sorted(self._users))
+
+    def _cmd_forgot(self, args: list[str]) -> str:
+        """forgot 사용자명 회복질문답
+        가입 시 설정한 회복 질문 답을 맞히면 새 비밀번호를 발급합니다.
+        """
+        if len(args) < 2:
+            return "사용법: forgot 사용자명 회복질문답\n(가입 시 설정한 회복 질문 답을 입력하세요)"
+        name, answer = args[0], " ".join(args[1:])
+        user = self._users.get(name)
+        if user is None:
+            return "존재하지 않는 사용자입니다."
+        if not user.get("recovery"):
+            return "이 계정에는 비밀번호 찾기(회복 질문)가 설정되지 않았습니다."
+        if user["recovery"] != answer:
+            return "회복 질문 답이 올바르지 않습니다."
+
+        # 임시 비밀번호 발급 (재로그인용)
+        temp = secrets.token_hex(4)
+        user["password"] = self._hash_password(temp)
+        if self._conn is not None:
+            self._save_user_to_db(name)
+        return f"임시 비밀번호가 발급되었습니다: {temp}\n'login {name} {temp}' 로 로그인 후 'passwd' 로 변경하세요."
+
+    def _cmd_resetpw(self, args: list[str]) -> str:
+        """resetpw 사용자명 새비밀번호 (관리자 전용)"""
+        if self._current_user != "admin":
+            return "관리자(admin)만 사용할 수 있습니다."
+        if len(args) < 2:
+            return "사용법: resetpw 사용자명 새비밀번호"
+        name, newpw = args[0], args[1]
+        user = self._users.get(name)
+        if user is None:
+            return "존재하지 않는 사용자입니다."
+        if len(newpw) < 4:
+            return "비밀번호는 4자 이상이어야 합니다."
+        user["password"] = self._hash_password(newpw)
+        if self._conn is not None:
+            self._save_user_to_db(name)
+        return f"{name} 의 비밀번호가 관리자에 의해 초기화되었습니다."
+
+
+def run_shell(db_path: str | None = None) -> None:
+    neo = NeoOS(db_path=db_path)
     print(f"NeoOS {VERSION} 부팅 완료. 'help'로 명령어를 확인하세요.")
+    try:
+        while neo.running:
+            try:
+                line = input("neo> ")
+            except (EOFError, KeyboardInterrupt):
+                print()
+                break
 
-    while neo.running:
-        try:
-            line = input("neo> ")
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
-
-        output = neo.execute_line(line)
-        if output:
-            print(output)
+            output = neo.execute_line(line)
+            if output:
+                print(output)
+    finally:
+        neo.close()
 
 
 if __name__ == "__main__":
-    run_shell()
+    # 웹 서버(server.py)는 DB 파일 경로를 넘겨 실제 계정 저장을 켭니다.
+    run_shell(db_path=os.environ.get("NEOOS_DB") if "os" in globals() else None)

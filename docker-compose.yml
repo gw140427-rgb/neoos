@@ -1,9 +1,22 @@
-# dockurr/windows 를 Docker Compose 로 실행하기 위한 파일입니다.
+# NeoOS 웹 터미널 + (참고용) dockurr/windows 를 함께 관리하는 Compose 파일입니다.
 #
 # ⚠️ 주의: RDP(3389) 포트는 보안상 127.0.0.1 에만 바인딩하는 것을 권장합니다.
 #    외부에 노출해야 한다면 방화벽/VPN 설정을 반드시 확인하세요.
 
 services:
+  # NeoOS 웹 터미널 (VPS 모드) - 브라우저에서 접속
+  neoos:
+    build: .
+    container_name: neoos
+    environment:
+      PORT: "10000"
+      NEOOS_DB: /app/database.db
+    ports:
+      - "10000:10000"
+    volumes:
+      - ./database.db:/app/database.db
+    restart: unless-stopped
+
   windows:
     image: dockurr/windows
     container_name: windows

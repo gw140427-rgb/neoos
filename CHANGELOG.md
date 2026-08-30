@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.0 Beta - 2026-08-30
+- 추가: 계정 시스템 — `register`, `login`, `logout`, `passwd`, `forgot`(비밀번호 찾기), `resetpw`(관리자), `users`
+- 추가: 계정을 SQLite(`database.db`)에 실제 저장 (비밀번호는 SHA-256 해시로만 저장, 평문 금지)
+- 추가: **만 14세 미만** 미성년자는 부모(법정대리인) 동의 후 가입 가능
+- 추가: `forgot` 명령으로 회복 질문 답을 맞히면 임시 비밀번호 발급
+- 추가: **웹 터미널 VPS 모드** (`server.py`) — 브라우저 접속, 실제 계정 로그인/가입
+- 추가: 세션 토큰(쿠키, HttpOnly + SameSite=Lax) 기반으로 세션별 독립 상태 유지
+- 추가: `/terms` 이용약관, `/privacy` 개인정보 처리방침 페이지
+- 추가: Docker / docker-compose 에서 NeoOS 웹 서비스 실행 지원
+- 테스트: 계정·부모동의·비밀번호찾기·DB 영속성·평문미저장 등 유닛 테스트 추가 (45개)
+
 ## v0.4.3 Beta - 2026-08-24
 - 보안: `calc`의 `eval` 제거 → AST 기반 안전 계산기로 교체 (지수 연산으로 인한 DoS 차단)
 - 개선: Ctrl+C(KeyboardInterrupt) 입력 시 트레이스백 없이 깔끔하게 종료
