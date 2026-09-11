@@ -60,6 +60,7 @@ class NeoOS:
         self._files: dict[str, str] = {}
         self._packages: set[str] = set()
         self._current_user: str | None = None
+        self._history: list[str] = []
         # 실제 계정 저장 (SQLite). db_path가 없으면 메모리 전용 (테스트/교육용).
         self._db_path = db_path
         self._conn: sqlite3.Connection | None = None
@@ -177,6 +178,9 @@ class NeoOS:
         self._register("append", "파일 내용 추가 (append 파일명 내용)", self._cmd_append)
         self._register("install", "가짜 패키지 설치 (install 패키지명)", self._cmd_install)
         self._register("pkgs", "설치된 패키지 목록", self._cmd_pkgs)
+        self._register("pwd", "현재 경로 출력", self._cmd_pwd)
+        self._register("uname", "시스템 정보 출력", self._cmd_uname)
+        self._register("history", "명령어 기록 출력", self._cmd_history)
         self._register("version", "NeoOS 버전 정보 출력", self._cmd_version)
         self._register("똥", "???", self._cmd_poop)
 
@@ -193,6 +197,8 @@ class NeoOS:
     def execute_line(self, line: str) -> str:
         # 입력 정리 (^@ 같은 거 제거)
         line = line.replace("\x00", "").strip()
+        if line:
+            self._history.append(line)
 
         parts = line.split()
         if not parts:
@@ -356,6 +362,32 @@ class NeoOS:
 
     def _cmd_version(self, _: list[str]) -> str:
         return f"NeoOS {VERSION}"
+
+    def _cmd_pwd(self, _: list[str]) -> str:
+        if self._current_user:
+            return f"/home/{self._current_user}"
+        return "/"
+
+    def _cmd_uname(self, args: list[str]) -> str:
+        if args and args[0] == "-a":
+            return f"NeoOS {VERSION} neoos {self._current_user or 'guest'} x86_64 Python"
+        return f"NeoOS {VERSION}"
+
+    def _cmd_history(self, args: list[str]) -> str:
+        if not self._history:
+            return "기록 없음"
+        n = len(self._history)
+        if args and args[0].isdigit():
+            n = min(int(args[0]), len(self._history))
+            hist = self._history[-n:]
+            start = len(self._history) - n + 1
+        else:
+            hist = self._history
+            start = 1
+        lines = []
+        for i, cmd in enumerate(hist, start=start):
+            lines.append(f"{i:4d}  {cmd}")
+        return "\n".join(lines)
 
     def _cmd_poop(self, _: list[str]) -> str:
         return "\n".join(
