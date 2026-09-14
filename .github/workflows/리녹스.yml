@@ -13,7 +13,11 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ttyd
+
           curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
           sudo dpkg -i /tmp/cloudflared.deb
-          ttyd -p 7681 -c "user:terminal" bash &
-          cloudflared tunnel --url http://127.0.0.1:7681
+
+          ttyd --writable -p 8080 -c "user:terminal" bash &
+          sleep 2
+
+          cloudflared tunnel --url http://127.0.0.1:8080
