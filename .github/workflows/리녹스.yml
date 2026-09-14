@@ -1,27 +1,19 @@
-name: Linux Test
+name: Web Terminal
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  terminal:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Check Linux
+      - name: Start Web Terminal
         run: |
-          echo "=== Linux Runner ==="
-          uname -a
-          cat /etc/os-release
-          echo
-          echo "=== Files ==="
-          ls -la
-
-      - name: Start SSH terminal
-        uses: mxschmitt/action-tmate@v3
-        with:
-          limit-access-to-actor: true
-          timeout-minutes: 30
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ttyd
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
+          sudo dpkg -i /tmp/cloudflared.deb
+          ttyd -p 7681 -c "user:terminal" bash &
+          cloudflared tunnel --url http://127.0.0.1:7681
