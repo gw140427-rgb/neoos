@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VPS Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1117;color:#e4e4e7;min-height:100vh;padding:24px}
+h1{font-size:1.6rem;font-weight:700;margin-bottom:4px}
+.sub{color:#a1a1aa;font-size:.9rem;margin-bottom:24px}
+.container{max-width:720px;margin:0 auto}
+.card{background:#1a1d27;border:1px solid #2a2e3f;border-radius:12px;padding:20px;margin-bottom:20px}
+.card h2{font-size:1rem;font-weight:600;margin-bottom:16px;color:#fafafa}
+label{font-size:.85rem;color:#a1a1aa;display:block;margin-bottom:6px}
+input{width:100%;background:#0f1117;border:1px solid #2a2e3f;color:#e4e4e7;border-radius:8px;padding:10px 12px;font-size:.95rem;outline:none;margin-bottom:12px}
+input:focus{border-color:#6366f1}
+.row{display:flex;gap:12px}
+.row>div{flex:1}
+button{background:#6366f1;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:.9rem;font-weight:600;cursor:pointer;transition:background .15s}
+button:hover{background:#5457e0}
+button.secondary{background:#272a3a}
+button.secondary:hover{background:#32364e}
+button:disabled{opacity:.5;cursor:not-allowed}
+.btn-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#msg{font-size:.85rem;min-height:1.2em;margin-top:10px}
+#msg.ok{color:#4ade80}
+#msg.err{color:#f87171}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th{color:#a1a1aa;font-weight:500;text-align:left;padding:8px;border-bottom:1px solid #2a2e3f}
+td{padding:8px;border-bottom:1px solid #1e2130}
+.badge{font-size:.75rem;padding:2px 8px;border-radius:999px;font-weight:600}
+.badge.running{background:#14532d;color:#4ade80}
+.badge.stopped{background:#3f3f46;color:#a1a1aa}
+.actions button{padding:4px 10px;font-size:.78rem;margin-right:4px}
+.empty{color:#71717a;text-align:center;padding:20px;font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>VPS Dashboard</h1>
+  <p class="sub">Mock VPS Service &mdash; create and manage virtual servers</p>
+
+  <div class="card">
+    <h2>Create VPS</h2>
+    <label for="name">Name</label>
+    <input id="name" placeholder="e.g. web-01">
+    <div class="row">
+      <div>
+        <label for="ram">RAM (MB)</label>
+        <input id="ram" type="number" min="128" placeholder="1024">
+      </div>
+      <div>
+        <label for="cpu">CPU (cores)</label>
+        <input id="cpu" type="number" min="1" placeholder="2">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button id="createBtn" onclick="createVPS()">Create VPS</button>
+    </div>
+    <div id="msg"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="margin:0">Instances</h2>
+      <button class="secondary" onclick="listVPS()">Refresh List</button>
+    </div>
+    <div id="list"></div>
+  </div>
+</div>
+
+<script>
+const API = ''; // same origin — FastAPI serves this static dir
+
+function showMsg(text, ok){
+  const el=document.getElementById('msg');
+  el.textContent=text;
+  el.className=ok?'ok':'err';
+  if(ok) setTimeout(()=>{el.textContent='';el.className='';},3000);
+}
+
+async function createVPS(){
+  const name=document.getElementById('name').value.trim();
+  const ram=parseInt(document.getElementById('ram').value,10);
+  const cpu=parseInt(document.getElementById('cpu').value,10);
+  if(!name||!ram||!cpu){ showMsg('Fill in name, ram and cpu.',false); return; }
+  const btn=document.getElementById('createBtn');
+  btn.disabled=true; btn.textContent='Creating...';
+  try{
+    const res=await fetch(API+'/vps/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,ram,cpu})});
+    if(!res.ok){ const e=await res.json(); throw new Error(e.detail||res.statusText); }
+    const data=await res.json();
+    showMsg('Created VPS '+data.id+' ('+data.name+')',true);
+    document.getElementById('name').value='';
+    document.getElementById('ram').value='';
+    document.getElementById('cpu').value='';
+    listVPS();
+  }catch(e){ showMsg('Error: '+e.message,false); }
+  finally{ btn.disabled=false; btn.textContent='Create VPS'; }
+}
+
+async function listVPS(){
+  const el=document.getElementById('list');
+  el.innerHTML='<p class="empty">Loading...</p>';
+  try{
+    const res=await fetch(API+'/vps/list');
+    if(!res.ok) throw new Error(res.statusText);
+    const items=await res.json();
+    if(!items.length){ el.innerHTML='<p class="empty">No instances yet. Create one above.</p>'; return; }
+    let html='<table><thead><tr><th>ID</th><th>Name</th><th>RAM</th><th>CPU</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+    for(const v of items){
+      html+='<tr>'
+        +'<td><code style="color:#a78bfa">'+v.id+'</code></td>'
+        +'<td>'+esc(v.name)+'</td>'
+        +'<td>'+v.ram+'</td>'
+        +'<td>'+v.cpu+'</td>'
+        +'<td><span class="badge '+v.status+'">'+v.status+'</span></td>'
+        +'<td class="actions">'
+          +'<button class="secondary" onclick="doAction(\''+v.id+'\',\'start\')">Start</button>'
+          +'<button class="secondary" onclick="doAction(\''+v.id+'\',\'stop\')">Stop</button>'
+          +'<button style="background:#dc2626" onclick="doAction(\''+v.id+'\',\'delete\')">Delete</button>'
+        +'</td></tr>';
+    }
+    html+='</tbody></table>';
+    el.innerHTML=html;
+  }catch(e){ el.innerHTML='<p class="empty" style="color:#f87171">Failed: '+esc(e.message)+'</p>'; }
+}
+
+async function doAction(id, act){
+  let url, method;
+  if(act==='delete'){ url=API+'/vps/'+id; method='DELETE'; }
+  else { url=API+'/vps/'+id+'/'+act; method='POST'; }
+  try{
+    const res=await fetch(url,{method});
+    if(!res.ok){ const e=await res.json(); throw new Error(e.detail||res.statusText); }
+    listVPS();
+  }catch(e){ alert(e.message); }
+}
+
+function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// auto-load on page open
+listVPS();
+</script>
+</body>
+</html>
