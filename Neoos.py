@@ -26,6 +26,7 @@ _BIN_OPS = {
     ast.Div: operator.truediv,
     ast.FloorDiv: operator.floordiv,
     ast.Mod: operator.mod,
+    ast.Pow: operator.pow,
 }
 
 _UNARY_OPS = {
@@ -40,6 +41,12 @@ def _safe_eval(node: ast.AST) -> float | int:
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
         return node.value
     if isinstance(node, ast.BinOp) and type(node.op) in _BIN_OPS:
+        if isinstance(node.op, ast.Pow):
+            base = _safe_eval(node.left)
+            exp = _safe_eval(node.right)
+            if abs(exp) > 100 or abs(base) > 1e6:
+                raise ValueError("지수가 너무 큽니다.")
+            return operator.pow(base, exp)
         return _BIN_OPS[type(node.op)](_safe_eval(node.left), _safe_eval(node.right))
     if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY_OPS:
         return _UNARY_OPS[type(node.op)](_safe_eval(node.operand))
@@ -133,8 +140,16 @@ class NeoOS:
 
     @staticmethod
     def _hash_password(password: str) -> str:
-        # 보안 강화: SHA-256 해시 (평문은 절대 저장하지 않음)
-        return hashlib.sha256(password.encode("utf-8")).hexdigest()
+        salt = secrets.token_hex(8)
+        h = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+        return f"{salt}${h}"
+
+    @staticmethod
+    def _verify_password(stored: str, password: str) -> bool:
+        if "$" not in stored:
+            return stored == hashlib.sha256(password.encode("utf-8")).hexdigest()
+        salt, h = stored.split("$", 1)
+        return h == hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
 
     def _ensure_admin(self) -> None:
         # 기본 관리자 계정 (첫 실행 시에만 생성)
@@ -428,6 +443,8 @@ class NeoOS:
         if len(args) >= 3:
             try:
                 birth_year = int(args[2])
+                if birth_year > current_year or birth_year < 1900:
+                    return "출생연도가 올바르지 않습니다."
             except ValueError:
                 return "출생연도는 숫자(예: 2012)여야 합니다."
             age = current_year - birth_year
@@ -469,7 +486,7 @@ class NeoOS:
             return "사용법: login 사용자명 비밀번호"
         name, password = args[0], args[1]
         user = self._users.get(name)
-        if user is None or user["password"] != self._hash_password(password):
+        if user is None or not self._verify_password(user["password"], password):
             return "로그인 실패: 사용자명 또는 비밀번호가 올바르지 않습니다."
         if user.get("parent_consent") is False:
             return "부모 동의가 완료되지 않은 계정입니다. 관리자에게 문의하세요."
