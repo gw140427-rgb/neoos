@@ -12,6 +12,7 @@
 import json
 import os
 import secrets
+import subprocess
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
 from urllib.parse import urlparse, parse_qs
@@ -412,9 +413,40 @@ class Handler(BaseHTTPRequestHandler):
         neo, _ = self._get_neo()
         if neo is None:
             return self._send_json(401, {"error": "로그인이 필요합니다. 새로고침 후 다시 로그인하세요."})
+        if neo.current_user != "admin":
+            return self._send_json(403, {"error": "실제 셸은 관리자 테스트 계정만 사용할 수 있습니다."})
+
         data = self._read_json()
         cmd = data.get("command", "")
-        output = neo.execute_line(cmd)
+        if not isinstance(cmd, str) or not cmd.strip():
+            return self._send_json(400, {"error": "명령어를 입력하세요.", "user": neo.current_user})
+        if len(cmd) > 1000:
+            return self._send_json(413, {"error": "명령어는 1000자 이하로 입력하세요.", "user": neo.current_user})
+
+        # 로컬 테스트 전용. 서버 프로세스의 OS 사용자 권한으로 실행됩니다.
+        # 반드시 Ubuntu 컨테이너 안에서 일반 사용자(neoos)로 서버를 실행하세요.
+        try:
+            result = subprocess.run(
+                ["bash", "-lc", cmd],
+                cwd=os.path.expanduser("~"),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=8,
+                check=False,
+                env={**os.environ, "HOME": os.path.expanduser("~")},
+            )
+            output = result.stdout[-12000:]
+            if result.returncode:
+                output += f"\\n[종료 코드: {result.returncode}]"
+        except subprocess.TimeoutExpired as exc:
+            raw = exc.stdout or b""
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8", errors="replace")
+            output = str(raw)[-12000:] + "\\n[시간 제한: 8초]"
+        except Exception as exc:
+            output = f"셸 실행 오류: {type(exc).__name__}"
         return self._send_json(200, {"output": output, "user": neo.current_user})
 
     def _api_whoami(self):
