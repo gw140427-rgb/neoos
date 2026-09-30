@@ -1,4 +1,4 @@
-"""NeoOS 웹 터미널 서버 (VPS 모드).
+"""NeoOS 웹 터미널 서버 (Docker Linux 모드).
 
 브라우저에서 접속해서 NeoOS 셸을 원격으로 제어합니다.
 - 실제 계정 저장: SQLite(database.db)
@@ -6,7 +6,7 @@
 - 개인정보 처리방침 / 이용약관 페이지
 - 14세 미만은 부모 동의 필요 (가입 시 확인)
 
-실행: PORT=8080 python3 server.py
+실행: HOST=0.0.0.0 PORT=10000 python3 server.py
 """
 
 import json
@@ -423,8 +423,8 @@ class Handler(BaseHTTPRequestHandler):
         if len(cmd) > 1000:
             return self._send_json(413, {"error": "명령어는 1000자 이하로 입력하세요.", "user": neo.current_user})
 
-        # 로컬 테스트 전용. 서버 프로세스의 OS 사용자 권한으로 실행됩니다.
-        # 반드시 Ubuntu 컨테이너 안에서 일반 사용자(neoos)로 서버를 실행하세요.
+        # Docker 컨테이너 안에서 실행하면 명령은 호스트가 아닌 컨테이너의 Linux에서 실행됩니다.
+        # 컨테이너는 일반 사용자(neoos)로 실행하고, 이 관리자 셸을 인터넷에 공개하지 마세요.
         try:
             result = subprocess.run(
                 ["bash", "-lc", cmd],
@@ -499,7 +499,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     server = HTTPServer((HOST, PORT), Handler)
     print("=" * 50)
-    print("NeoOS 웹 터미널 서버 (VPS 모드)")
+    print("NeoOS 웹 터미널 서버 (Docker Linux 모드)")
     print(f"  접속:   http://localhost:{PORT}")
     print(f"  DB:     {DB_PATH}")
     print(f"  기본:   admin / admin")
