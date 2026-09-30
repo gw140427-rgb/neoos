@@ -152,14 +152,27 @@ class NeoOS:
         return h == hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
 
     def _ensure_admin(self) -> None:
-        # 기본 관리자 계정 (첫 실행 시에만 생성)
-        if "admin" not in self._users:
+        # 관리자 계정은 환경변수로만 초기 설정합니다.
+        # 기본 비밀번호 admin/admin 자동 생성은 금지합니다.
+        admin_password = os.environ.get("NEOOS_ADMIN_PASSWORD", "")
+        if not admin_password:
+            return
+        if len(admin_password) < 12:
+            raise ValueError("NEOOS_ADMIN_PASSWORD는 12자 이상이어야 합니다.")
+
+        admin = self._users.get("admin")
+        if admin is None:
             self._users["admin"] = {
-                "password": self._hash_password("admin"),
+                "password": self._hash_password(admin_password),
                 "birth_year": None,
                 "parent_consent": True,
                 "recovery": None,
             }
+            if self._conn is not None:
+                self._save_user_to_db("admin")
+        elif self._verify_password(admin["password"], "admin"):
+            # 기존 기본 계정(admin/admin)이면 설정된 비밀번호로 교체합니다.
+            admin["password"] = self._hash_password(admin_password)
             if self._conn is not None:
                 self._save_user_to_db("admin")
 
