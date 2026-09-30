@@ -3,6 +3,10 @@ services:
     build: .
     container_name: neoos-web
     restart: unless-stopped
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "10000"
+      NEOOS_DB: /data/database.db
     ports:
       - "127.0.0.1:10000:10000"
     volumes:
