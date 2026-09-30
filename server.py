@@ -19,6 +19,7 @@ from urllib.parse import urlparse, parse_qs
 from Neoos import NeoOS
 
 PORT = int(os.environ.get("PORT", 10000))
+HOST = os.environ.get("HOST", "127.0.0.1")
 DB_PATH = os.environ.get("NEOOS_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "database.db"))
 
 
@@ -464,7 +465,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = HTTPServer(("0.0.0.0", PORT), Handler)
+    server = HTTPServer((HOST, PORT), Handler)
     print("=" * 50)
     print("NeoOS 웹 터미널 서버 (VPS 모드)")
     print(f"  접속:   http://localhost:{PORT}")
