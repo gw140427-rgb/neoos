@@ -1,0 +1,22 @@
+services:
+  neoos:
+    build: .
+    container_name: neoos-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:10000:10000"
+    volumes:
+      - neoos_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: 1.0
+
+volumes:
+  neoos_data:
