@@ -13,6 +13,9 @@ from Neoos import NeoOS, VERSION
 class NeoOSTestCase(unittest.TestCase):
     def setUp(self):
         self.os = NeoOS()
+        # 테스트 전용 관리자 계정을 명시적으로 생성합니다.
+        # 운영 코드의 기본 admin/admin 자동 생성은 사용하지 않습니다.
+        self.os.execute_line("register admin admin")
 
     def test_echo(self):
         self.assertEqual(self.os.execute_line("echo 안녕하세요"), "안녕하세요")
