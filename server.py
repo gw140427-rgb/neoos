@@ -187,7 +187,7 @@ class Handler(BaseHTTPRequestHandler):
 <title>NeoOS 웹 터미널</title>
 <style>
   * { box-sizing: border-box; }
-  body { margin:0; background:#0d1117; color:#c9d1d9; font-family:'Menlo','Monaco','Consolas',monospace; }
+  body { margin:0; background:radial-gradient(ellipse at 50% 0%,#243b66 0%,#111827 48%,#080b12 100%); color:#e6edf3; font-family:'Menlo','Monaco','Consolas',monospace; }
   #bar { padding:8px 14px; background:#161b22; border-bottom:1px solid #30363d; display:flex; justify-content:space-between; align-items:center; }
   #bar h1 { font-size:15px; margin:0; color:#58a6ff; }
   #user { font-size:13px; color:#8b949e; }
