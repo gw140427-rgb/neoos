@@ -11,7 +11,7 @@ services:
     environment:
       PORT: "10000"
       NEOOS_DB: /data/database.db
-      NEOOS_ADMIN_PASSWORD: ${NEOOS_ADMIN_PASSWORD:-}
+      NEOOS_ADMIN_PASSWORD: ${NEOOS_ADMIN_PASSWORD:-neoos-admin-2026}
     ports:
       - "10000:10000"
     volumes:
