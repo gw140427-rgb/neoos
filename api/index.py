@@ -12,6 +12,12 @@ from http.cookies import SimpleCookie
 if os.environ.get("VERCEL"):
     os.environ["NEOOS_DB"] = "/tmp/neoos.db"
 
+# Vercel has no Docker Compose environment, so ensure the first deployment
+# still has a deterministic bootstrap admin account. Replace this with a
+# Vercel environment variable for production deployments.
+if not os.environ.get("NEOOS_ADMIN_PASSWORD"):
+    os.environ["NEOOS_ADMIN_PASSWORD"] = "neoos-admin-2026"
+
 from Neoos import NeoOS
 from server import DB_PATH, SESSIONS, Handler
 
@@ -99,7 +105,7 @@ def app(environ, start_response):
         password = str(data.get("password") or "")
         token, neo = SESSIONS.create()
         try:
-            result = neo.execute_line("login " + username + " " + password)
+            result = neo._cmd_login([username, password])
         except Exception:
             SESSIONS.destroy(token)
             return _json(start_response, "500 Internal Server Error", {"ok": False, "error": "로그인 처리 중 오류가 발생했습니다."})
@@ -126,7 +132,7 @@ def app(environ, start_response):
             args.append(recovery)
         neo = NeoOS(db_path=DB_PATH)
         try:
-            result = neo.execute_line("register " + " ".join(args))
+            result = neo._cmd_register(args)
         finally:
             neo.close()
         ok = "계정이 생성되었습니다" in result
@@ -138,7 +144,7 @@ def app(environ, start_response):
         answer = str(data.get("answer") or "").strip()
         neo = NeoOS(db_path=DB_PATH)
         try:
-            result = neo.execute_line("forgot " + username + " " + answer)
+            result = neo._cmd_forgot([username, answer])
         finally:
             neo.close()
         return _json(start_response, "200 OK", {"message": result})
@@ -149,6 +155,9 @@ def app(environ, start_response):
         if neo is None:
             return _json(start_response, "401 Unauthorized",
                          {"error": "로그인이 필요합니다. 새로고침 후 다시 로그인하세요."})
+        if neo.current_user != "admin":
+            return _json(start_response, "403 Forbidden",
+                         {"error": "실제 셸은 관리자 테스트 계정만 사용할 수 있습니다."})
         command = str(data.get("command") or "")
         output = neo.execute_line(command)
         return _json(start_response, "200 OK",
