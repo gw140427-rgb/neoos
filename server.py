@@ -371,7 +371,7 @@ class Handler(BaseHTTPRequestHandler):
         password = data.get("password") or ""
         # 새 세션 (로그인 시도용)
         token, neo = SESSIONS.create()
-        result = neo.execute_line(f"login {username} {password}")
+        result = neo._cmd_login([username, password])
         if neo.current_user is not None:
             # 성공: 세션 유지
             return self._send_json(200, {"ok": True, "token": token, "user": neo.current_user},
@@ -396,7 +396,7 @@ class Handler(BaseHTTPRequestHandler):
             args.append(recovery)
         # 임시 NeoOS로 가입 처리 (계정은 공유 DB에 저장)
         neo = NeoOS(db_path=DB_PATH)
-        result = neo.execute_line("register " + " ".join(args))
+        result = neo._cmd_register(args)
         neo.close()
         if "계정이 생성되었습니다" in result:
             return self._send_json(200, {"ok": True, "message": result})
@@ -407,7 +407,7 @@ class Handler(BaseHTTPRequestHandler):
         username = (data.get("username") or "").strip()
         answer = (data.get("answer") or "").strip()
         neo = NeoOS(db_path=DB_PATH)
-        result = neo.execute_line(f"forgot {username} {answer}")
+        result = neo._cmd_forgot([username, answer])
         neo.close()
         return self._send_json(200, {"message": result})
 
