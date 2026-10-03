@@ -253,8 +253,8 @@ class Handler(BaseHTTPRequestHandler):
   </div>
 
   <div id="termWrap" class="hidden">
-    <div id="screen"><span class="out">NeoOS 웹 터미널 부팅 완료. 'help'로 명령어를 확인하세요.</span></div>
-    <div id="inputrow"><span class="prompt">neo&gt;</span><input id="cmd" autocomplete="off" autofocus placeholder="명령어를 입력..."></div>
+    <div id="screen"><span class="out">NeoOS Linux-style shell ready. 'help'로 명령어를 확인하세요.</span></div>
+    <div id="inputrow"><span id="prompt" class="prompt">admin@neoos:~#</span><input id="cmd" autocomplete="off" autofocus placeholder="명령어를 입력..."></div>
   </div>
 
 <script>
@@ -335,11 +335,12 @@ class Handler(BaseHTTPRequestHandler):
   async function refreshStatus() {
     const d = await api('/api/whoami', {});
     $('username').textContent = d.user || '(비로그인)';
+    if (d.prompt) $('prompt').textContent = d.prompt;
   }
 
   async function run(cmd) {
     if (!cmd.trim()) return;
-    line('neo> ' + cmd, 'cmd');
+    line(($('prompt').textContent || 'neo>') + ' ' + cmd, 'cmd');
     history.push(cmd); histIdx = history.length;
     const d = await api('/api/command', { command: cmd });
     if (String(cmd.trim()) === 'clear') { $('screen').innerHTML = ''; }
