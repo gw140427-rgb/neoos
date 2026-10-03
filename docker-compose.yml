@@ -12,11 +12,36 @@ services:
       PORT: "10000"
       NEOOS_DB: /data/database.db
       NEOOS_ADMIN_PASSWORD: ${NEOOS_ADMIN_PASSWORD:-neoos-admin-2026}
+      NEOOS_LINUX_API: http://linux:8081/exec
     ports:
       - "10000:10000"
     volumes:
       - neoos-data:/data
     restart: unless-stopped
+    networks:
+      - neoos-net
+
+  linux:
+    build: ./linux
+    container_name: neoos-linux
+    expose:
+      - "8081"
+    volumes:
+      - neoos-linux-home:/home/neoos
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /run:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: "0.75"
+    pids_limit: 128
+    restart: unless-stopped
+    networks:
+      - neoos-net
 
   windows:
     image: dockurr/windows
@@ -39,3 +64,8 @@ services:
 
 volumes:
   neoos-data:
+  neoos-linux-home:
+
+networks:
+  neoos-net:
+    internal: true
