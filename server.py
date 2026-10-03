@@ -276,8 +276,17 @@ class Handler(BaseHTTPRequestHandler):
   async function api(path, body) {
     const opt = { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' };
     if (body !== undefined) opt.body = JSON.stringify(body);
-    const res = await fetch(path, opt);
-    return res.json();
+    try {
+      const res = await fetch(path, opt);
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); }
+      catch { data = { ok: false, error: `서버 응답 오류 (${res.status})` }; }
+      if (!res.ok && !data.error && !data.message) data.error = `요청 실패 (${res.status})`;
+      return data;
+    } catch (err) {
+      return { ok: false, error: '서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.' };
+    }
   }
 
   async function doLogin(e) {
