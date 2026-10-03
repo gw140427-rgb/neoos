@@ -117,3 +117,27 @@ MIT License - [LICENSE](LICENSE) 참고
 - [ ] 웹 터미널을 데스크톱형 화면으로 개선
 - [ ] 터미널 창과 앱 실행 화면 구성
 - [ ] 모바일 화면에서도 조작하기 쉽게 반응형 레이아웃 적용
+
+
+## Podroid + Alpine Linux + Docker
+
+Podroid의 Alpine Linux는 호스트 환경으로 사용하고, 실제 Linux 환경은 별도의 Debian 컨테이너로 실행합니다. Alpine 호스트에서 Debian 컨테이너를 실행하는 구조이므로 Debian을 Podroid에 직접 설치할 필요가 없습니다.
+
+NeoOS와 Debian Linux를 함께 실행하려면 Docker가 실행되는 Podroid 환경에서:
+
+```bash
+git clone https://github.com/gw140427-rgb/neoos.git
+cd neoos
+docker compose build neoos linux
+docker compose up -d linux neoos
+docker compose ps
+```
+
+웹 터미널은 `http://127.0.0.1:10000`에서 확인합니다.
+
+- `neoos`: 웹 UI와 계정/NeoOS 기능
+- `linux`: 실제 Debian + Bash 실행 환경
+- `neoos-net`: 두 컨테이너만 연결하는 내부 네트워크
+- `neoos-linux-home`: Debian 사용자 홈 디렉터리 영속 볼륨
+
+Windows 서비스까지 필요하지 않다면 `docker compose up -d linux neoos`처럼 두 서비스만 실행하세요.
