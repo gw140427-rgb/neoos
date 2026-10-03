@@ -1,26 +1,57 @@
+# NeoOS + isolated Debian Linux
+# Podroid/Alpine에서는 이 파일 하나만 사용합니다.
 services:
   neoos:
     build: .
-    container_name: neoos-web
+    container_name: neoos
     restart: unless-stopped
     environment:
       HOST: "0.0.0.0"
       PORT: "10000"
       NEOOS_DB: /data/database.db
+      NEOOS_ADMIN_PASSWORD: ${NEOOS_ADMIN_PASSWORD:-neoos-admin-2026}
+      NEOOS_LINUX_API: http://linux:8081/exec
     ports:
-      - "127.0.0.1:10000:10000"
+      - "10000:10000"
     volumes:
-      - neoos_data:/data
+      - neoos-data:/data
+    depends_on:
+      linux:
+        condition: service_healthy
+    networks:
+      - neoos-net
+
+  linux:
+    build: ./linux
+    container_name: neoos-linux
+    expose:
+      - "8081"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - neoos-linux-home:/home/neoos
     read_only: true
     tmpfs:
-      - /tmp:rw,noexec,nosuid,size=16m
-    security_opt:
-      - no-new-privileges:true
+      - /tmp:size=64m,mode=1777
+      - /run:size=16m
     cap_drop:
       - ALL
-    pids_limit: 64
+    security_opt:
+      - no-new-privileges:true
     mem_limit: 512m
-    cpus: 1.0
+    cpus: "0.75"
+    pids_limit: 128
+    restart: unless-stopped
+    networks:
+      - neoos-net
 
 volumes:
-  neoos_data:
+  neoos-data:
+  neoos-linux-home:
+
+networks:
+  neoos-net:
+    internal: true
