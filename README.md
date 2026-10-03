@@ -1,143 +1,105 @@
 # NeoOS
 
-Python으로 만든 교육용 셸 OS 시뮬레이터 (+ 웹 터미널 VPS).
+NeoOS 저장소는 현재 **Podroid의 Alpine Linux에서 Docker로 Debian Linux 컨테이너를 실행하는 용도**로 정리되어 있습니다.
 
-## 개요
+## 현재 구조
 
-NeoOS는 메모리 기반의 가상 파일시스템과 명령어 셸을 제공하는 미니 운영체제 시뮬레이터입니다. 실제 OS 동작 원리를 학습하기 위한 교육 목적으로 개발되었습니다.
+    Podroid Alpine Linux
+    └── Docker
+        └── neoos-linux
+            └── Debian Linux
 
-계정은 SQLite(`database.db`)에 **암호화(SHA-256)**로 실제 저장되며, 14세 미만은 부모 동의 후 가입할 수 있습니다. 브라우저에서 접속할 수 있는 웹 터미널(VPS 모드)도 포함되어 있습니다.
+- Podroid Alpine Linux: Docker를 실행하는 호스트
+- neoos-linux: Debian Bookworm 기반 Linux 컨테이너
+- 현재 구성에서는 NeoOS 웹 서버, Vercel 배포, Windows 컨테이너를 사용하지 않습니다.
+- Debian은 Podroid에 직접 설치하지 않고 Docker 컨테이너로 실행합니다.
 
-## 요구사항
+## Podroid에서 실행하는 방법
 
-- Python 3.10+
-- 외부 패키지 불필요 (표준 라이브러리만 사용: `sqlite3`, `http.server`, `hashlib`)
+### 1. 저장소 받기
 
-## 실행 방법
+    git clone https://github.com/gw140427-rgb/neoos.git
+    cd neoos
 
-### 1. 로컬 셸 (CLI)
+이미 클론해 둔 경우에는 최신 변경사항을 먼저 받습니다.
 
-```bash
-python3 Neoos.py
-```
+    cd ~/neoos
+    git pull
 
-부팅 후 `neo>` 프롬프트에서 명령어를 입력합니다. (기본 관리자: `admin` / `admin`)
+### 2. Debian Linux 컨테이너 빌드 및 실행
 
-### 2. 웹 터미널 (VPS 모드)
+    docker compose up -d --build
 
-```bash
-python3 server.py
-```
+### 3. 실행 상태 확인
 
-브라우저에서 `http://localhost:10000` 에 접속합니다.
-`PORT` 환경변수로 포트 변경, `NEOOS_DB`로 DB 파일 경로를 바꿀 수 있습니다.
+    docker compose ps
 
-```bash
-PORT=8080 NEOOS_DB=/path/to/db.sqlite python3 server.py
-```
+neoos-linux 컨테이너가 실행 중이면 정상입니다.
 
-### 3. Docker
+### 4. Debian Linux 접속
 
-```bash
-docker compose up neoos
-```
+    docker exec -it neoos-linux /bin/bash
 
-## 명령어 목록
+접속하면 Debian Linux 셸에서 명령어를 사용할 수 있습니다.
 
-| 명령어 | 설명 | 예시 |
-|--------|------|------|
-| `help` | 명령어 목록 출력 | `help` |
-| `echo` | 텍스트 출력 | `echo 안녕하세요` |
-| `time` | 현재 UTC 시간 | `time` |
-| `clear` | 화면 정리 | `clear` |
-| `exit` | NeoOS 종료 | `exit` |
-| `calc` | 계산기 | `calc 2 + 3` |
-| `ls` | 파일 목록 | `ls`, `ls 파일명` |
-| `touch` | 파일 생성 | `touch new.txt` |
-| `cat` | 파일 내용 보기 | `cat new.txt` |
-| `write` | 파일 내용 덮어쓰기 | `write file.txt 내용` |
-| `append` | 파일 내용 추가 (없으면 생성) | `append file.txt 추가내용` |
-| `rm` | 파일 삭제 | `rm file.txt`, `rm -f file.txt` |
-| `install` | 가짜 패키지 설치 (진행바) | `install 패키지명` |
-| `pkgs` | 설치된 패키지 목록 | `pkgs` |
-| `pwd` | 현재 경로 | `pwd` |
-| `whoami` | 현재 사용자 | `whoami` |
-| `uname` | 시스템 정보 | `uname` |
-| `history` | 명령어 기록 | `history`, `history 5` |
-| `version` | 버전 정보 | `version` |
-| `똥` | ??? | `똥` |
+    cat /etc/os-release
+    uname -a
+    pwd
+    ls
 
-### 계정 / 로그인 명령어
+나가려면:
 
-| 명령어 | 설명 | 예시 |
-|--------|------|------|
-| `register` | 새 계정 생성 (14세 미만은 부모 동의 필요) | `register user pass 2005 동의 답변` |
-| `login` | 로그인 | `login user pass` |
-| `logout` | 로그아웃 | `logout` |
-| `whoami` | 현재 사용자 | `whoami` |
-| `passwd` | 비밀번호 변경 (로그인 중) | `passwd 새비번` |
-| `forgot` | 비밀번호 찾기 (회복 질문 답으로 임시 비번 발급) | `forgot user 답변` |
-| `resetpw` | 비밀번호 초기화 (관리자 전용) | `resetpw user 새비번` |
-| `users` | 사용자 목록 | `users`, `users --all` (admin) |
+    exit
 
-### 계정 규칙
+## 중요한 점
 
-- 비밀번호는 **평문 저장 금지** — SHA-256 해시로만 저장합니다.
-- **만 14세 미만**은 법정대리인(부모) 동의 후 가입할 수 있습니다.
-- 웹 터미널은 **세션 토큰(쿠키)** 기반으로, 세션마다 독립된 상태를 유지합니다.
+현재 compose.yaml은 **Debian Linux 컨테이너만 실행하도록 구성**되어 있습니다.
 
-## 웹 터미널 페이지
+따라서 다음과 같은 예전 방식은 현재 사용하지 않습니다.
 
-| 경로 | 내용 |
-|------|------|
-| `/` | 로그인 / 회원가입 / 웹 터미널 |
-| `/terms` | 이용약관 |
-| `/privacy` | 개인정보 처리방침 |
+- NeoOS 웹 터미널
+- Vercel 배포
+- Windows 컨테이너
+- docker compose up neoos
+- http://127.0.0.1:10000 웹 접속
 
-## 보안
+현재 필요한 명령은 아래 4개입니다.
 
-- 비밀번호 해시 저장 (SHA-256, 솔트 없음 — 교육용 단순화)
-- 세션 토큰은 `secrets.token_hex`로 생성
-- 쿠키에 `HttpOnly`, `SameSite=Lax` 적용
-- `calc`는 AST 기반 안전 계산기 (`eval` 사용 안 함)
+    cd ~/neoos
+    git pull
+    docker compose up -d --build
+    docker exec -it neoos-linux /bin/bash
 
-## 테스트
+## 컨테이너 구성
 
-```bash
-python3 -m unittest test_neoos -v
-```
+현재 Debian 컨테이너에는 다음과 같은 제한이 적용되어 있습니다.
+
+- Debian Bookworm Slim
+- Bash
+- Python 3
+- 홈 디렉터리 영속 볼륨
+- 읽기 전용 루트 파일시스템
+- 임시 /tmp, /run
+- CPU 제한
+- 메모리 제한
+- 프로세스 수 제한
+- 추가 Linux capability 제거
+- no-new-privileges 적용
+
+따라서 일반적인 Docker 컨테이너보다 제한된 환경입니다.
+
+## 저장소의 주요 파일
+
+- compose.yaml — Podroid용 Debian Linux 컨테이너 구성
+- linux/Dockerfile — Debian 컨테이너 이미지 구성
+- linux/bridge.py — 내부 Linux 브리지
+- Neoos.py — 기존 NeoOS CLI 코드
+- installer.py — 기존 NeoOS 설치 관련 코드
+- test_neoos.py — 기존 NeoOS 테스트
+- scripts/ — 관련 설치 스크립트
+
+현재 Podroid에서 실제로 사용하는 핵심 구성은 compose.yaml과 linux/입니다.
 
 ## 라이선스
 
 MIT License - [LICENSE](LICENSE) 참고
-
-
-## 개발 계획
-
-- [ ] 웹 터미널을 데스크톱형 화면으로 개선
-- [ ] 터미널 창과 앱 실행 화면 구성
-- [ ] 모바일 화면에서도 조작하기 쉽게 반응형 레이아웃 적용
-
-
-## Podroid + Alpine Linux + Docker
-
-Podroid의 Alpine Linux는 호스트 환경으로 사용하고, 실제 Linux 환경은 별도의 Debian 컨테이너로 실행합니다. Alpine 호스트에서 Debian 컨테이너를 실행하는 구조이므로 Debian을 Podroid에 직접 설치할 필요가 없습니다.
-
-NeoOS와 Debian Linux를 함께 실행하려면 Docker가 실행되는 Podroid 환경에서:
-
-```bash
-git clone https://github.com/gw140427-rgb/neoos.git
-cd neoos
-docker compose build neoos linux
-docker compose up -d linux neoos
-docker compose ps
-```
-
-웹 터미널은 `http://127.0.0.1:10000`에서 확인합니다.
-
-- `neoos`: 웹 UI와 계정/NeoOS 기능
-- `linux`: 실제 Debian + Bash 실행 환경
-- `neoos-net`: 두 컨테이너만 연결하는 내부 네트워크
-- `neoos-linux-home`: Debian 사용자 홈 디렉터리 영속 볼륨
-
-Windows 서비스까지 필요하지 않다면 `docker compose up -d linux neoos`처럼 두 서비스만 실행하세요.
