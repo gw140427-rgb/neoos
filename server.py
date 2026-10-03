@@ -88,9 +88,10 @@ class Handler(BaseHTTPRequestHandler):
     def _read_json(self) -> dict:
         try:
             length = int(self.headers.get("Content-Length", 0))
-            if length <= 0:
+            if length <= 0 or length > 64 * 1024:
                 return {}
-            return json.loads(self.rfile.read(length).decode("utf-8"))
+            data = json.loads(self.rfile.read(length).decode("utf-8"))
+            return data if isinstance(data, dict) else {}
         except Exception:
             return {}
 
@@ -105,10 +106,11 @@ class Handler(BaseHTTPRequestHandler):
         return neo, token
 
     def _session_cookie_header(self, token: str, *, maxage=None) -> dict:
-        if maxage:
-            return {"Set-Cookie": f"neoos_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={maxage}"}
-        # 세션 쿠키 (브라우저 종료 시 소멸)
-        return {"Set-Cookie": f"neoos_session={token}; Path=/; HttpOnly; SameSite=Lax"}
+        suffix = "" if maxage is None else f"; Max-Age={int(maxage)}"
+        return {"Set-Cookie": f"neoos_session={token}; Path=/; HttpOnly; SameSite=Lax{suffix}"}
+
+    def _clear_session_cookie_header(self) -> dict:
+        return {"Set-Cookie": "neoos_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"}
 
     # ------------------------------------------------------------------
     # 페이지
