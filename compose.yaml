@@ -1,26 +1,6 @@
-# NeoOS + isolated Debian Linux
-# Podroid/Alpine에서는 이 파일 하나만 사용합니다.
+# Podroid용 Debian Linux 컨테이너
+# NeoOS 웹 서버는 여기서 실행하지 않습니다.
 services:
-  neoos:
-    build: .
-    container_name: neoos
-    restart: unless-stopped
-    environment:
-      HOST: "0.0.0.0"
-      PORT: "10000"
-      NEOOS_DB: /data/database.db
-      NEOOS_ADMIN_PASSWORD: ${NEOOS_ADMIN_PASSWORD:-neoos-admin-2026}
-      NEOOS_LINUX_API: http://linux:8081/exec
-    ports:
-      - "10000:10000"
-    volumes:
-      - neoos-data:/data
-    depends_on:
-      linux:
-        condition: service_healthy
-    networks:
-      - neoos-net
-
   linux:
     build: ./linux
     container_name: neoos-linux
@@ -45,13 +25,6 @@ services:
     cpus: "0.75"
     pids_limit: 128
     restart: unless-stopped
-    networks:
-      - neoos-net
 
 volumes:
-  neoos-data:
   neoos-linux-home:
-
-networks:
-  neoos-net:
-    internal: true
