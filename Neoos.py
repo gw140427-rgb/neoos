@@ -82,6 +82,9 @@ class NeoOS:
     def _init_db(self) -> None:
         if self._db_path is None:
             return  # 메모리 모드: _users dict에 저장
+        # DB 파일이 아직 없어도 부모 디렉터리만 존재하면 SQLite가 자동 생성합니다.
+        db_parent = os.path.dirname(os.path.abspath(self._db_path))
+        os.makedirs(db_parent, exist_ok=True)
         self._conn = sqlite3.connect(self._db_path)
         self._conn.execute(
             """
