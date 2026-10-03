@@ -170,11 +170,15 @@ class NeoOS:
             }
             if self._conn is not None:
                 self._save_user_to_db("admin")
-        elif self._verify_password(admin["password"], "admin"):
-            # 기존 기본 계정(admin/admin)이면 설정된 비밀번호로 교체합니다.
-            admin["password"] = self._hash_password(admin_password)
-            if self._conn is not None:
-                self._save_user_to_db("admin")
+        else:
+            # NEOOS_ADMIN_PASSWORD가 명시된 경우 해당 값을 관리자 비밀번호의
+            # 기준으로 사용합니다. 기존 DB에 오래된 admin 비밀번호가 있어도
+            # 환경변수와 일치하도록 갱신하여 웹 로그인이 실패하지 않게 합니다.
+            if not self._verify_password(admin["password"], admin_password):
+                admin["password"] = self._hash_password(admin_password)
+                admin["parent_consent"] = True
+                if self._conn is not None:
+                    self._save_user_to_db("admin")
 
     @property
     def current_user(self) -> str | None:
