@@ -459,9 +459,7 @@ class Handler(BaseHTTPRequestHandler):
         _, token = self._get_neo()
         if token:
             SESSIONS.destroy(token)
-        return self._send_json(200, {"ok": True}, extra_headers={
-            "Set-Cookie": "neoos_session=; Path=/; HttpOnly; Max-Age=0"
-        })
+        return self._send_json(200, {"ok": True}, extra_headers=self._clear_session_cookie_header())
 
     # ------------------------------------------------------------------
     # 라우팅
@@ -474,6 +472,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "text/html; charset=utf-8", self._terms_page().encode("utf-8"))
         elif path == "/privacy":
             self._send(200, "text/html; charset=utf-8", self._privacy_page().encode("utf-8"))
+        elif path == "/health":
+            self._send_json(200, {"ok": True, "service": "neoos"})
         else:
             self._send(404, "text/plain; charset=utf-8", b"Not Found")
 
