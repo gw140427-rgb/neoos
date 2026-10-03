@@ -10,11 +10,12 @@ services:
     container_name: neoos
     environment:
       PORT: "10000"
-      NEOOS_DB: /app/database.db
+      NEOOS_DB: /data/database.db
+      NEOOS_ADMIN_PASSWORD: ${NEOOS_ADMIN_PASSWORD:-}
     ports:
       - "10000:10000"
     volumes:
-      - ./database.db:/app/database.db
+      - neoos-data:/data
     restart: unless-stopped
 
   windows:
@@ -35,3 +36,6 @@ services:
       - ./windows:/storage
     restart: always
     stop_grace_period: 2m
+
+volumes:
+  neoos-data:
