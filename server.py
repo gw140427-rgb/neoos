@@ -1,4 +1,4 @@
-"""NeoOS 웹 터미널 서버 (Docker Linux 모드).
+"""NeoOS 웹 터미널 서버 (Linux 모드).
 
 브라우저에서 접속해서 NeoOS 셸을 원격으로 제어합니다.
 - 실제 계정 저장: SQLite(database.db)
@@ -423,8 +423,8 @@ class Handler(BaseHTTPRequestHandler):
         if len(cmd) > 1000:
             return self._send_json(413, {"error": "명령어는 1000자 이하로 입력하세요.", "user": neo.current_user})
 
-        # Docker 컨테이너 안에서 실행하면 명령은 호스트가 아닌 컨테이너의 Linux에서 실행됩니다.
-        # 컨테이너는 일반 사용자(neoos)로 실행하고, 이 관리자 셸을 인터넷에 공개하지 마세요.
+        # 일반 Linux 서버의 현재 사용자 환경에서 명령을 실행합니다.
+        # 관리자 셸을 인터넷에 공개하지 마세요.
         try:
             result = subprocess.run(
                 ["bash", "-lc", cmd],
@@ -499,7 +499,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     server = HTTPServer((HOST, PORT), Handler)
     print("=" * 50)
-    print("NeoOS 웹 터미널 서버 (Docker Linux 모드)")
+    print("NeoOS 웹 터미널 서버 (Linux 모드)")
     print(f"  접속:   http://localhost:{PORT}")
     print(f"  DB:     {DB_PATH}")
     print(f"  기본:   admin / admin")
