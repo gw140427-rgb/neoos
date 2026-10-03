@@ -462,7 +462,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _api_whoami(self):
         neo, _ = self._get_neo()
-        return self._send_json(200, {"user": neo.current_user if neo else None})
+        if neo is None:
+            return self._send_json(200, {"user": None})
+        prompt = "admin@neoos:~#" if neo.current_user == "admin" else f"{neo.current_user}@neoos:~$"
+        return self._send_json(200, {"user": neo.current_user, "prompt": prompt})
 
     def _api_logout(self):
         _, token = self._get_neo()
