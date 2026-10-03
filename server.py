@@ -13,6 +13,8 @@ import json
 import os
 import secrets
 import subprocess
+import urllib.request
+import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
 from urllib.parse import urlparse
@@ -425,9 +427,6 @@ class Handler(BaseHTTPRequestHandler):
         neo, _ = self._get_neo()
         if neo is None:
             return self._send_json(401, {"error": "로그인이 필요합니다. 새로고침 후 다시 로그인하세요."})
-        if neo.current_user != "admin":
-            return self._send_json(403, {"error": "실제 셸은 관리자 테스트 계정만 사용할 수 있습니다."})
-
         data = self._read_json()
         cmd = data.get("command", "")
         if not isinstance(cmd, str) or not cmd.strip():
@@ -435,31 +434,27 @@ class Handler(BaseHTTPRequestHandler):
         if len(cmd) > 1000:
             return self._send_json(413, {"error": "명령어는 1000자 이하로 입력하세요.", "user": neo.current_user})
 
-        # 일반 Linux 서버의 현재 사용자 환경에서 명령을 실행합니다.
-        # 관리자 셸을 인터넷에 공개하지 마세요.
+        # 실제 Linux 명령은 별도의 격리된 컨테이너에서만 실행합니다.
+        # NeoOS/Vercel 호스트 자체의 셸은 절대 실행하지 않습니다.
+        linux_api = os.environ.get("NEOOS_LINUX_API", "http://linux:8081/exec")
+        payload = json.dumps({"command": cmd}).encode("utf-8")
+        request = urllib.request.Request(
+            linux_api,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         try:
-            result = subprocess.run(
-                ["bash", "-lc", cmd],
-                cwd=os.path.expanduser("~"),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                timeout=8,
-                check=False,
-                env={**os.environ, "HOME": os.path.expanduser("~")},
-            )
-            output = result.stdout[-12000:]
-            if result.returncode:
-                output += f"\\n[종료 코드: {result.returncode}]"
-        except subprocess.TimeoutExpired as exc:
-            raw = exc.stdout or b""
-            if isinstance(raw, bytes):
-                raw = raw.decode("utf-8", errors="replace")
-            output = str(raw)[-12000:] + "\\n[시간 제한: 8초]"
+            with urllib.request.urlopen(request, timeout=10) as response:
+                raw = response.read(16 * 1024)
+                result = json.loads(raw.decode("utf-8"))
+            if not result.get("ok"):
+                return self._send_json(502, {"error": result.get("error", "Linux 컨테이너 오류"), "user": neo.current_user})
+            return self._send_json(200, {"output": result.get("output", ""), "user": neo.current_user, "linux": True})
+        except urllib.error.URLError:
+            return self._send_json(503, {"error": "실제 Linux 컨테이너에 연결할 수 없습니다.", "user": neo.current_user})
         except Exception as exc:
-            output = f"셸 실행 오류: {type(exc).__name__}"
-        return self._send_json(200, {"output": output, "user": neo.current_user})
+            return self._send_json(502, {"error": f"Linux 브리지 오류: {type(exc).__name__}", "user": neo.current_user})
 
     def _api_whoami(self):
         neo, _ = self._get_neo()
