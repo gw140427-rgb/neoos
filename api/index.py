@@ -4,7 +4,13 @@ Render continues to use server.py. This module only adapts the same
 application to Vercel's Python function runtime.
 """
 import json
+import os
 from http.cookies import SimpleCookie
+
+# Vercel serverless functions can write only to /tmp. Keep the existing
+# Podroid/Docker DB path untouched, but give the Vercel runtime a writable DB.
+if os.environ.get("VERCEL"):
+    os.environ["NEOOS_DB"] = "/tmp/neoos.db"
 
 from Neoos import NeoOS
 from server import DB_PATH, SESSIONS, Handler
