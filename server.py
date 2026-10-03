@@ -502,7 +502,7 @@ def main():
     print("NeoOS 웹 터미널 서버 (Linux 모드)")
     print(f"  접속:   http://localhost:{PORT}")
     print(f"  DB:     {DB_PATH}")
-    print(f"  기본:   admin / admin")
+    print("  관리자: admin (비밀번호는 NEOOS_ADMIN_PASSWORD 설정값)")
     print("  약관:   /terms  / privacy: /privacy")
     print("=" * 50)
     try:
