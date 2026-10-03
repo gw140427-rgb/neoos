@@ -15,7 +15,7 @@ import secrets
 import subprocess
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 from Neoos import NeoOS
 
@@ -272,8 +272,8 @@ class Handler(BaseHTTPRequestHandler):
   window.show = show;
 
   async function api(path, body) {
-    const opt = { method: 'POST', headers: { 'Content-Type': 'application/json' } };
-    if (body) opt.body = JSON.stringify(body);
+    const opt = { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' };
+    if (body !== undefined) opt.body = JSON.stringify(body);
     const res = await fetch(path, opt);
     return res.json();
   }
@@ -288,7 +288,7 @@ class Handler(BaseHTTPRequestHandler):
 
   async function doReg(e) {
     e.preventDefault();
-    const consent = $('r_consent').value ? '동의' : '';
+    const consent = $('r_consent').value.trim();
     const d = await api('/api/register', {
       username: $('r_user').value, password: $('r_pass').value,
       birth_year: $('r_birth').value, consent: consent, recovery: $('r_recovery').value
