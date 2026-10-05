@@ -92,3 +92,4 @@ sed -i 's/^iso_application=.*/iso_application="NeoOS PC Edition"/' "$PROFILE/pro
 sed -i 's/^iso_publisher=.*/iso_publisher="NeoOS Project"/' "$PROFILE/profiledef.sh"
 mkarchiso -v -r -w "$WORK/work" -o "$OUT" "$PROFILE"
 ls -lh "$OUT"
+# CI rebuild trigger: verify ISO after Docker CI repair.
