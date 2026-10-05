@@ -1,45 +1,29 @@
-import React,{useEffect,useMemo,useRef,useState}from"react";
+import React,{useEffect,useMemo,useState}from"react";
 import{createRoot}from"react-dom/client";
 import"./style.css";
-const VERSION="NeoOS Web v1.1.0";
-const COMMANDS=["help","clear","echo","date","time","calc","ls","touch","cat","write","append","rm","pwd","uname","version","whoami","neofetch","status","history","reboot","about","install","pkgs"];
-function calc(input){const s=input.replace(/\s+/g,"");if(!s||!/^[0-9+*/%().-]+$/.test(s))throw Error();let i=0,peek=()=>s[i];const num=()=>{let st=i;while(/[0-9.]/.test(s[i]||""))i++;let n=Number(s.slice(st,i));if(!Number.isFinite(n))throw Error();return n};const factor=()=>{if(peek()==="-"){i++;return-num(factor())}if(peek()==="+"){i++;return num()}if(peek()==="("){i++;let v=expr();if(peek()!==")")throw Error();i++;return v}return num()};const term=()=>{let v=factor();while("*/%".includes(peek())){let op=s[i++],r=factor();if((op==="/"||op==="%")&&r===0)throw Error();v=op==="*"?v*r:op==="/" ?v/r:v%r}return v};const expr=()=>{let v=term();while("+-".includes(peek())){let op=s[i++],r=term();v=op==="+"?v+r:v-r}return v};let v=expr();if(i!==s.length||!Number.isFinite(v))throw Error();return String(v)}
+const APPS=[{id:"files",name:"Files",icon:"📁",title:"파일 관리자"},{id:"notes",name:"Notes",icon:"📝",title:"메모"},{id:"terminal",name:"Terminal",icon:"⌨️",title:"터미널"},{id:"settings",name:"Settings",icon:"⚙️",title:"설정"},{id:"about",name:"NeoOS",icon:"◈",title:"NeoOS 정보"}];
 function App(){
-const[lines,setLines]=useState(["NEOOS WEB v1.1.0","NeoOS Web boot complete.","Type help to begin."]);
-const[input,setInput]=useState("");
-const[files,setFiles]=useState(()=>{try{return JSON.parse(localStorage.getItem("neoos-files")||'{"README.txt":"Welcome to NeoOS Web."}')}catch{return{"README.txt":"Welcome to NeoOS Web."}}});
-const[history,setHistory]=useState(()=>{try{return JSON.parse(localStorage.getItem("neoos-history")||"[]")}catch{return[]}});
-const[hi,setHi]=useState(-1),ref=useRef(null);
-useEffect(()=>localStorage.setItem("neoos-files",JSON.stringify(files)),[files]);
-useEffect(()=>localStorage.setItem("neoos-history",JSON.stringify(history.slice(-100))),[history]);
-const names=useMemo(()=>Object.keys(files).sort(),[files]);
-const print=x=>setLines(l=>[...l,...String(x).split("\n")]);
-function run(raw){const line=raw.trim();if(!line)return;setHistory(h=>[...h,line].slice(-100));setHi(-1);if(line==="clear"){setLines([]);setInput("");return}print("neo@neoos:~$ "+line);const[p,...a]=line.split(/\s+/),arg=a.join(" ");let out="";
-switch(p.toLowerCase()){
-case"help":out="NeoOS Web commands:\n help clear echo date time calc\n ls touch cat write append rm\n pwd uname version whoami neofetch\n status history reboot about install pkgs";break;
-case"echo":out=arg;break;case"date":out=new Date().toLocaleDateString("ko-KR");break;case"time":out=new Date().toLocaleString("ko-KR");break;
-case"calc":try{out=calc(arg)}catch{out="계산 오류"}break;case"ls":out=names.join("\n")||"(파일 없음)";break;
-case"touch":if(!a[0])out="사용법: touch 파일명";else{setFiles(f=>({...f,[a[0]]:f[a[0]]??""}));out=a[0]+" 생성됨"}break;
-case"cat":out=a[0]in files?files[a[0]]:"cat: 파일 없음";break;
-case"write":if(!a[0]||!a[1])out="사용법: write 파일명 내용";else{setFiles(f=>({...f,[a[0]]:a.slice(1).join(" ")}));out=a[0]+" 저장됨"}break;
-case"append":if(!a[0]||!a[1])out="사용법: append 파일명 내용";else{setFiles(f=>({...f,[a[0]]:[f[a[0]]||"",a.slice(1).join(" ")].filter(Boolean).join("\n")}));out=a[0]+" 추가됨"}break;
-case"rm":{let n=a[0]==="-f"?a[1]:a[0];if(!n||!(n in files))out="rm: 파일 없음";else{setFiles(f=>{let x={...f};delete x[n];return x});out=n+" 삭제됨"}break}
-case"pwd":out="/home/guest";break;case"uname":out="NeoOS Web 1.1 • JavaScript • Vercel";break;case"version":out=VERSION;break;case"whoami":out="guest";break;
-case"history":out=history.length?history.map((x,i)=>String(i+1).padStart(3," ")+"  "+x).join("\n"):"기록 없음";break;
-case"neofetch":out="OS: NeoOS Web\nVersion: "+VERSION+"\nUser: guest\nShell: neo-shell\nFiles: "+names.length+"\nStorage: browser localStorage";break;
-case"status":out="SYSTEM ONLINE\nShell: READY\nFiles: "+names.length+"\nSession: guest";break;
-case"about":out="브라우저에서 실행되는 NeoOS 스타일 운영체제 시뮬레이터입니다.";break;
-case"reboot":setLines([]);setTimeout(()=>setLines(["NeoOS Web rebooting...","","Boot complete.","Type help to begin."]),250);setInput("");return;
-case"install":out=a[0]?"패키지 "+a[0]+" 설치됨 (웹 시뮬레이션)":"사용법: install 패키지명";break;
-case"pkgs":out="neo-core\nneo-shell\nneo-utils";break;
-case"login":case"logout":out="웹 버전은 guest 세션으로 실행됩니다.";break;
-default:out="neo-shell: "+p+" 명령을 찾을 수 없습니다."}
-print(out);setInput("")}
-function key(e){if(e.key==="Enter"){run(input);return}if(e.key==="ArrowUp"){e.preventDefault();let n=Math.min(hi+1,history.length-1);setHi(n);setInput(history[history.length-1-n]||"")}if(e.key==="ArrowDown"){e.preventDefault();let n=hi-1;setHi(n);setInput(n<0?"":history[history.length-1-n]||"")}if(e.key==="Tab"){e.preventDefault();let m=COMMANDS.filter(x=>x.startsWith(input));if(m.length===1)setInput(m[0]+" ")}}
-return <main onClick={()=>ref.current?.focus()}>
-<header><div className="brand"><strong>NEO<span>OS</span></strong><small>WEB SYSTEM</small></div><div className="status"><i/> ONLINE</div></header>
-<div className="layout"><section className="terminal"><div className="terminal-body">{lines.map((x,i)=><div className={x.startsWith("neo@neoos")?"command":""} key={i}>{x||"\u00a0"}</div>)}<div className="prompt"><span>neo@neoos:~$</span><input ref={ref} autoFocus spellCheck="false" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={key}/></div></div></section>
-<aside><div className="card"><h3>SYSTEM</h3><p><span>STATUS</span><b>ONLINE</b></p><p><span>USER</span><b>guest</b></p><p><span>FILES</span><b>{names.length}</b></p><p><span>VERSION</span><b>1.1.0</b></p></div><div className="card"><h3>QUICK COMMANDS</h3>{["help","neofetch","ls","status"].map(c=><button key={c} onClick={e=>{e.stopPropagation();run(c)}}>{c}</button>)}</div></aside></div>
-<footer>{["help","ls","clear","reboot"].map(c=><button key={c} onClick={e=>{e.stopPropagation();run(c)}}>{c.toUpperCase()}</button>)}</footer>
-</main>}
+const[windows,setWindows]=useState([]),[active,setActive]=useState(null),[boot,setBoot]=useState(true),[dark,setDark]=useState(()=>localStorage.getItem("neoos-dark")!=="false"),[wall,setWall]=useState(()=>localStorage.getItem("neoos-wall")||"aurora"),[files,setFiles]=useState(()=>JSON.parse(localStorage.getItem("neoos-files")||'{"README.txt":"Welcome to NeoOS v2.0"}')),[note,setNote]=useState(()=>localStorage.getItem("neoos-note")||"NeoOS에 오신 것을 환영합니다."),[query,setQuery]=useState("");
+useEffect(()=>{const t=setTimeout(()=>setBoot(false),900);return()=>clearTimeout(t)},[]);
+useEffect(()=>localStorage.setItem("neoos-files",JSON.stringify(files)),[files]);useEffect(()=>localStorage.setItem("neoos-note",note),[note]);useEffect(()=>localStorage.setItem("neoos-dark",String(dark)),[dark]);useEffect(()=>localStorage.setItem("neoos-wall",wall),[wall]);
+const open=id=>{if(!windows.includes(id))setWindows(w=>[...w,id]);setActive(id)},close=id=>{setWindows(w=>w.filter(x=>x!==id));setActive(a=>a===id?null:a)},toggle=id=>windows.includes(id)?setActive(a=>a===id?null:id):open(id);
+const names=useMemo(()=>Object.keys(files).sort(),[files]),filtered=APPS.filter(a=>a.name.toLowerCase().includes(query.toLowerCase()));
+if(boot)return <div className="boot"><div className="boot-logo">◈</div><h1>NEO<span>OS</span></h1><p>Starting Web System...</p><div className="loader"/></div>;
+return <main className={"os "+(dark?"dark":"light")+" wall-"+wall}>
+<div className="topbar"><div className="top-brand">◈ <b>NeoOS</b></div><div className="top-center">{new Date().toLocaleDateString("ko-KR",{weekday:"short",month:"long",day:"numeric"})}</div><div className="top-right"><span>● ONLINE</span><span>{new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}</span></div></div>
+<section className="desktop"><div className="welcome"><div><p className="eyebrow">NEOOS WEB SYSTEM</p><h1>Welcome back.</h1><p>오늘도 NeoOS를 개발해보자 🚀</p></div><button onClick={()=>open("about")}>시스템 정보 →</button></div>
+<div className="icons">{filtered.map(a=><button className="app-icon" key={a.id} onDoubleClick={()=>open(a.id)} onClick={()=>toggle(a.id)}><span>{a.icon}</span><small>{a.name}</small></button>)}</div>
+{windows.map((id,i)=><Window key={id} app={APPS.find(a=>a.id===id)} index={i} active={active===id} onFocus={()=>setActive(id)} onClose={()=>close(id)}><AppContent id={id} files={files} setFiles={setFiles} note={note} setNote={setNote} dark={dark} setDark={setDark} wall={wall} setWall={setWall} names={names}/></Window>)}</section>
+<div className="dock">{APPS.map(a=><button key={a.id} className={active===a.id?"selected":""} onClick={()=>toggle(a.id)} title={a.title}>{a.icon}</button>)}<i/><button onClick={()=>setQuery(query?"":" ")}>🔎</button></div>
+{query!==""&&<div className="search"><input autoFocus placeholder="NeoOS에서 검색..." value={query.trim()===""?"":query} onChange={e=>setQuery(e.target.value)}/><div>{filtered.map(a=><button key={a.id} onClick={()=>{open(a.id);setQuery("")}}>{a.icon} {a.name}</button>)}</div></div>}</main>}
+function Window({app,index,active,onFocus,onClose,children}){return <div className={"window "+(active?"active":"")} style={{zIndex:active?100:10+index}} onMouseDown={onFocus}><div className="titlebar"><div><span>{app.icon}</span><b>{app.title}</b></div><button onClick={onClose}>×</button></div><div className="window-body">{children}</div></div>}
+function AppContent({id,files,setFiles,note,setNote,dark,setDark,wall,setWall,names}){
+if(id==="files")return <div className="files"><div className="file-head"><b>내 파일</b><button onClick={()=>setFiles(f=>({...f,["새파일-"+Date.now()+".txt"]:""}))}>＋ 새 파일</button></div>{names.map(n=><div className="file-row" key={n}><span>📄</span><b>{n}</b><small>{files[n]?.length||0} bytes</small></div>)}</div>;
+if(id==="notes")return <div className="notes"><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="메모를 입력하세요..."/><small>자동 저장됨 · localStorage</small></div>;
+if(id==="settings")return <div className="settings"><h2>Settings</h2><label>테마 <button onClick={()=>setDark(!dark)}>{dark?"🌙 Dark":"☀️ Light"}</button></label><label>배경 <select value={wall} onChange={e=>setWall(e.target.value)}><option value="aurora">Aurora</option><option value="midnight">Midnight</option><option value="sky">Sky</option></select></label><div className="setting-card"><b>NeoOS v2.0</b><span>브라우저 저장소 기반 개인 웹 OS</span></div></div>;
+if(id==="terminal")return <Terminal files={files} setFiles={setFiles}/>;
+return <div className="about"><div className="neo-mark">◈</div><h2>NeoOS Web</h2><p>Version 2.0</p><p className="muted">A lightweight web operating system built with React + Vite.</p><div className="chips"><span>Vercel</span><span>React</span><span>Mobile Ready</span><span>Local Storage</span></div></div>}
+function Terminal({files,setFiles}){const[out,setOut]=useState(["NeoOS Shell v2.0","Type help to begin."]),[input,setInput]=useState("");
+const run=cmd=>{const[p,...a]=cmd.trim().split(/\s+/);if(!p)return;let o="";switch(p){case"help":o="help  ls  cat  touch  rm  clear  neofetch  status  date";break;case"ls":o=Object.keys(files).join("  ");break;case"cat":o=files[a[0]]??"파일 없음";break;case"touch":if(a[0]){setFiles(f=>({...f,[a[0]]:""}));o=a[0]+" created"}else o="usage: touch FILE";break;case"rm":if(a[0]){setFiles(f=>{const n={...f};delete n[a[0]];return n});o=a[0]+" removed"}break;case"neofetch":o="NeoOS Web 2.0\nShell: neo-shell\nRuntime: Browser\nStorage: localStorage";break;case"status":o="SYSTEM ONLINE\nAPPS READY\nSTORAGE READY";break;case"date":o=new Date().toLocaleString("ko-KR");break;case"clear":setOut([]);return;default:o="neo-shell: command not found: "+p}setOut(x=>[...x,"neo@neoos:~$ "+cmd,o])};
+return <div className="terminal"><div className="term-out">{out.map((x,i)=><div key={i}>{x}</div>)}</div><div className="term-input"><span>neo@neoos:~$</span><input autoFocus value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){run(input);setInput("")}}}/></div></div>}
 createRoot(document.getElementById("root")).render(<App/>);
