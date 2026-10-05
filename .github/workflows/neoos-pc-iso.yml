@@ -19,10 +19,10 @@ jobs:
 
       - name: Build NeoOS PC ISO
         run: |
-          docker run --privileged --rm \\
-            -v "$GITHUB_WORKSPACE:/src" \\
-            -w /src \\
-            archlinux:latest \\
+          docker run --privileged --rm \
+            -v "$GITHUB_WORKSPACE:/src" \
+            -w /src \
+            archlinux:latest \
             bash -lc 'bash os/build.sh'
 
       - name: Upload ISO
