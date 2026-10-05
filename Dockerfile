@@ -10,7 +10,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY --chown=root:root Neoos.py server.py ./
+COPY --chown=root:root Neoos.py ./
+COPY --chown=root:root server.py ./
 RUN chmod 0555 /app && chmod 0444 /app/Neoos.py /app/server.py \
     && useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin neoos \
     && mkdir -p /data \
