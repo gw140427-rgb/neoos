@@ -59,6 +59,20 @@ else
   curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --no-onboard || echo "⚠️ OpenClaw 설치 실패"
 fi
 
+
+echo "== ChatGPT Termux MCP Workbench =="
+mkdir -p "$BASE/chatgpt-workspace"
+python -m pip install --user --upgrade fastmcp || echo "⚠️ FastMCP 설치 실패"
+curl -fsSL https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/chatgpt-mcp.py -o "$BASE/chatgpt-mcp.py" || echo "⚠️ ChatGPT MCP 다운로드 실패"
+chmod +x "$BASE/chatgpt-mcp.py" 2>/dev/null || true
+
+cat > "$HOME/bin/chatgpt-mcp" <<'WRAP'
+#!/data/data/com.termux/files/usr/bin/bash
+export CHATGPT_WORKSPACE="$HOME/ai-room/chatgpt-workspace"
+exec python "$HOME/ai-room/chatgpt-mcp.py" "$@"
+WRAP
+chmod +x "$HOME/bin/chatgpt-mcp"
+
 echo
 echo "== 확인 =="
 printf 'ai-room: '; [ -x "$HOME/bin/ai-room" ] && echo "✅ $HOME/bin/ai-room" || echo "⚠️ 확인 필요"
