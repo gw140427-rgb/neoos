@@ -59,7 +59,6 @@ else
   curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --no-onboard || echo "⚠️ OpenClaw 설치 실패"
 fi
 
-
 echo "== ChatGPT Termux MCP Workbench =="
 mkdir -p "$BASE/chatgpt-workspace"
 python -m pip install --user --upgrade fastmcp || echo "⚠️ FastMCP 설치 실패"
@@ -73,6 +72,25 @@ exec python "$HOME/ai-room/chatgpt-mcp.py" "$@"
 WRAP
 chmod +x "$HOME/bin/chatgpt-mcp"
 
+cat > "$HOME/bin/chatgpt-mcp-check" <<'WRAP'
+#!/data/data/com.termux/files/usr/bin/bash
+set -u
+export CHATGPT_WORKSPACE="$HOME/ai-room/chatgpt-workspace"
+printf 'workspace: %s\n' "$CHATGPT_WORKSPACE"
+if python -c 'import fastmcp' >/dev/null 2>&1; then
+  echo "fastmcp: OK"
+else
+  echo "fastmcp: ERROR"
+fi
+if [ -f "$HOME/ai-room/chatgpt-mcp.py" ]; then
+  echo "server-file: OK"
+else
+  echo "server-file: MISSING"
+fi
+echo "endpoint: http://127.0.0.1:8765/mcp"
+WRAP
+chmod +x "$HOME/bin/chatgpt-mcp-check"
+
 echo
 echo "== 확인 =="
 printf 'ai-room: '; [ -x "$HOME/bin/ai-room" ] && echo "✅ $HOME/bin/ai-room" || echo "⚠️ 확인 필요"
@@ -80,9 +98,13 @@ printf 'ai-backup: '; [ -x "$HOME/bin/ai-backup" ] && echo "✅ $HOME/bin/ai-bac
 printf 'codex: '; command -v codex || echo "⚠️ 확인 필요"
 printf 'hermes: '; command -v hermes || echo "⚠️ 확인 필요"
 printf 'openclaw: '; command -v openclaw || echo "⚠️ 확인 필요"
+printf 'chatgpt-mcp: '; [ -x "$HOME/bin/chatgpt-mcp" ] && echo "✅ $HOME/bin/chatgpt-mcp" || echo "⚠️ 확인 필요"
 
 echo
 echo "✅ 통합 설치 단계 완료"
 echo "명령: ai-room"
 echo "백업: ai-backup"
+echo "MCP 확인: chatgpt-mcp-check"
+echo "MCP 실행: chatgpt-mcp"
+echo "MCP 서버는 기본적으로 localhost에서만 실행됩니다."
 echo "로그인/Provider 설정은 각 도구에서 직접 진행하세요."
