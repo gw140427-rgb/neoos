@@ -14,15 +14,35 @@ pkg_install() {
   fi
 }
 
+# Download to a temporary file first, so failed downloads never leave a partial script.
+download_file() {
+  local url="$1" dest="$2" tmp
+  mkdir -p "$(dirname "$dest")" || return 1
+  tmp="$(mktemp "${dest}.tmp.XXXXXX")" || return 1
+  if curl -fL --retry 3 --connect-timeout 15 "$url" -o "$tmp"; then
+    if [ ! -s "$tmp" ]; then
+      echo "⚠️ 빈 파일 다운로드: $url" >&2
+      rm -f "$tmp"
+      return 1
+    fi
+    if mv -f "$tmp" "$dest"; then
+      return 0
+    fi
+  fi
+  echo "⚠️ 다운로드/저장 실패: $dest (저장 공간과 권한을 확인하세요)" >&2
+  rm -f "$tmp"
+  return 1
+}
+
 echo "== 기본 도구 =="
 pkg_install git curl python nodejs openssl
 
 echo "== ai-room =="
-curl -fsSL https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/ai-room.sh -o "$BASE/ai-room.sh" || echo "⚠️ ai-room 다운로드 실패"
+download_file https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/ai-room.sh "$BASE/ai-room.sh" || echo "⚠️ ai-room 다운로드 실패"
 chmod +x "$BASE/ai-room.sh" 2>/dev/null || true
 
 echo "== 안전 백업 기능 =="
-curl -fsSL https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/backup-safe.sh -o "$BASE/backup-safe.sh" || echo "⚠️ backup-safe 다운로드 실패"
+download_file https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/backup-safe.sh "$BASE/backup-safe.sh" || echo "⚠️ backup-safe 다운로드 실패"
 chmod +x "$BASE/backup-safe.sh" 2>/dev/null || true
 
 mkdir -p "$HOME/bin"
@@ -62,7 +82,7 @@ fi
 echo "== ChatGPT Termux MCP Workbench =="
 mkdir -p "$BASE/chatgpt-workspace"
 python -m pip install --user --upgrade fastmcp || echo "⚠️ FastMCP 설치 실패"
-curl -fsSL https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/chatgpt-mcp.py -o "$BASE/chatgpt-mcp.py" || echo "⚠️ ChatGPT MCP 다운로드 실패"
+download_file https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/chatgpt-mcp.py "$BASE/chatgpt-mcp.py" || echo "⚠️ ChatGPT MCP 다운로드 실패"
 chmod +x "$BASE/chatgpt-mcp.py" 2>/dev/null || true
 
 cat > "$HOME/bin/chatgpt-mcp" <<'WRAP'
