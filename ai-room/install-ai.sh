@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 set -u
 export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 
@@ -6,11 +6,27 @@ BASE="$HOME/ai-room"
 mkdir -p "$BASE"
 
 echo "🤖 NeoOS AI 통합 설치"
+echo "환경: $(uname -s) / $(uname -m)"
 echo "⚠️ 기존 Node/OpenClaw/Hermes/Codex 설정은 삭제하지 않습니다."
+echo "⚠️ 설치 과정은 네트워크와 저장 공간을 사용하며 일부 도구는 별도 로그인/설정이 필요합니다."
 
-pkg_install() {
+install_base_packages() {
   if command -v pkg >/dev/null 2>&1; then
-    pkg install -y "$@" >/dev/null 2>&1 || true
+    pkg update && pkg install -y git curl python nodejs openssl
+  elif command -v apt-get >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+      APT="apt-get"
+    elif command -v sudo >/dev/null 2>&1; then
+      APT="sudo apt-get"
+    else
+      echo "오류: Debian/Ubuntu에서 패키지를 설치하려면 root 또는 sudo 권한이 필요합니다." >&2
+      return 1
+    fi
+    $APT update &&
+      DEBIAN_FRONTEND=noninteractive $APT install -y git curl python3 python-is-python3 python3-venv python3-pip nodejs npm openssl ca-certificates unzip
+  else
+    echo "오류: 지원되는 패키지 관리자를 찾지 못했습니다 (pkg/apt-get)." >&2
+    return 1
   fi
 }
 
@@ -35,7 +51,10 @@ download_file() {
 }
 
 echo "== 기본 도구 =="
-pkg_install git curl python nodejs openssl
+if ! install_base_packages; then
+  echo "❌ 기본 도구 설치에 실패했습니다. 위의 오류를 확인하세요." >&2
+  exit 1
+fi
 
 echo "== ai-room =="
 download_file https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/ai-room.sh "$BASE/ai-room.sh" || echo "⚠️ ai-room 다운로드 실패"
@@ -47,13 +66,13 @@ chmod +x "$BASE/backup-safe.sh" 2>/dev/null || true
 
 mkdir -p "$HOME/bin"
 cat > "$HOME/bin/ai-room" <<'WRAP'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 exec "$HOME/ai-room/ai-room.sh" "$@"
 WRAP
 chmod +x "$HOME/bin/ai-room"
 
 cat > "$HOME/bin/ai-backup" <<'WRAP'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 exec "$HOME/ai-room/backup-safe.sh" "$@"
 WRAP
 chmod +x "$HOME/bin/ai-backup"
@@ -81,13 +100,20 @@ fi
 
 echo "== ChatGPT Termux MCP Workbench =="
 mkdir -p "$BASE/chatgpt-workspace"
-python -m pip install --user --upgrade fastmcp || echo "⚠️ FastMCP 설치 실패"
+if python -m venv "$BASE/.venv"; then
+  "$BASE/.venv/bin/python" -m pip install --upgrade pip fastmcp || echo "⚠️ FastMCP 설치 실패"
+else
+  echo "⚠️ Python venv 생성 실패. FastMCP 설치를 건너뜁니다."
+fi
 download_file https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/chatgpt-mcp.py "$BASE/chatgpt-mcp.py" || echo "⚠️ ChatGPT MCP 다운로드 실패"
 chmod +x "$BASE/chatgpt-mcp.py" 2>/dev/null || true
 
 cat > "$HOME/bin/chatgpt-mcp" <<'WRAP'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 export CHATGPT_WORKSPACE="$HOME/ai-room/chatgpt-workspace"
+if [ -x "$HOME/ai-room/.venv/bin/python" ]; then
+  exec "$HOME/ai-room/.venv/bin/python" "$HOME/ai-room/chatgpt-mcp.py" "$@"
+fi
 exec python "$HOME/ai-room/chatgpt-mcp.py" "$@"
 WRAP
 chmod +x "$HOME/bin/chatgpt-mcp"
