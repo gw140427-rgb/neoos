@@ -11,21 +11,31 @@ echo "⚠️ 기존 Node/OpenClaw/Hermes/Codex 설정은 삭제하지 않습니�
 echo "⚠️ 설치 과정은 네트워크와 저장 공간을 사용하며 일부 도구는 별도 로그인/설정이 필요합니다."
 
 install_base_packages() {
-  if command -v pkg >/dev/null 2>&1; then
+  # Use Termux pkg only inside the real Termux host. Debian PRoot can inherit
+  # a "pkg" command from PATH, but Termux refuses to run it as root.
+  if [[ "${PREFIX:-}" == *"/com.termux/files/usr" ]] && command -v pkg >/dev/null 2>&1; then
+    echo "패키지 관리자: Termux pkg"
     pkg update && pkg install -y git curl python nodejs openssl
   elif command -v apt-get >/dev/null 2>&1; then
+    echo "패키지 관리자: Debian/Ubuntu apt-get"
     if [ "$(id -u)" -eq 0 ]; then
-      APT="apt-get"
+      APT=(apt-get)
     elif command -v sudo >/dev/null 2>&1; then
-      APT="sudo apt-get"
+      APT=(sudo apt-get)
     else
       echo "오류: Debian/Ubuntu에서 패키지를 설치하려면 root 또는 sudo 권한이 필요합니다." >&2
       return 1
     fi
-    $APT update &&
-      DEBIAN_FRONTEND=noninteractive $APT install -y git curl python3 python-is-python3 python3-venv python3-pip nodejs npm openssl ca-certificates unzip
+    "${APT[@]}" update &&
+      DEBIAN_FRONTEND=noninteractive "${APT[@]}" install -y \
+        git curl python3 python-is-python3 python3-venv python3-pip \
+        nodejs npm openssl ca-certificates unzip
+  elif command -v pkg >/dev/null 2>&1; then
+    echo "오류: 'pkg' 명령은 있지만 현재 환경이 실제 Termux가 아닙니다." >&2
+    echo "Debian/Ubuntu에서는 apt-get이 필요합니다." >&2
+    return 1
   else
-    echo "오류: 지원되는 패키지 관리자를 찾지 못했습니다 (pkg/apt-get)." >&2
+    echo "오류: 지원되는 패키지 관리자를 찾지 못했습니다 (Termux pkg / apt-get)." >&2
     return 1
   fi
 }
