@@ -108,3 +108,48 @@ echo "MCP 확인: chatgpt-mcp-check"
 echo "MCP 실행: chatgpt-mcp"
 echo "MCP 서버는 기본적으로 localhost에서만 실행됩니다."
 echo "로그인/Provider 설정은 각 도구에서 직접 진행하세요."
+
+# OpenAI Secure MCP Tunnel helper (optional; does not install or store API keys).
+cat > "$HOME/bin/chatgpt-tunnel-setup" <<'TUNNEL'
+#!/data/data/com.termux/files/usr/bin/bash
+set -eu
+export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+
+if ! command -v tunnel-client >/dev/null 2>&1; then
+  echo "tunnel-client가 현재 Termux PATH에 없습니다."
+  echo "주의: Debian/PRoot 안에 설치된 tunnel-client는 Termux에서 자동으로 사용할 수 없습니다."
+  echo "OpenAI tunnel-client를 이 환경에 별도로 준비한 뒤 다시 실행하세요."
+  exit 1
+fi
+
+read -r -p "OpenAI Tunnel ID (tunnel_...): " TUNNEL_ID
+[ -n "$TUNNEL_ID" ] || { echo "Tunnel ID가 비어 있습니다."; exit 1; }
+case "$TUNNEL_ID" in
+  tunnel_*) ;;
+  *) echo "Tunnel ID는 tunnel_ 접두사로 시작해야 합니다."; exit 1 ;;
+esac
+
+read -r -p "MCP URL [http://127.0.0.1:8765/mcp]: " MCP_URL
+MCP_URL="${MCP_URL:-http://127.0.0.1:8765/mcp}"
+
+if [ -z "${CONTROL_PLANE_API_KEY:-}" ]; then
+  echo "런타임 API 키를 채팅이나 파일에 붙여 넣지 마세요."
+  echo "현재 셸에서 다음처럼 환경변수로 설정한 뒤 다시 실행하세요:"
+  echo '  export CONTROL_PLANE_API_KEY="YOUR_RUNTIME_API_KEY"'
+  echo "이 키에는 필요한 Tunnels Read/Use 권한만 부여하세요."
+  exit 1
+fi
+
+tunnel-client init \
+  --sample sample_mcp_remote_no_auth \
+  --profile neoos-ai-room \
+  --tunnel-id "$TUNNEL_ID" \
+  --mcp-server-url "$MCP_URL"
+echo
+echo "프로필 생성 요청이 완료되었습니다. 서버를 먼저 실행한 뒤 다음 명령으로 터널을 실행하세요:"
+echo "  tunnel-client run --profile neoos-ai-room"
+echo "터널 연결 후 ChatGPT의 MCP 커넥터에서 연결 상태를 확인하세요."
+TUNNEL
+chmod +x "$HOME/bin/chatgpt-tunnel-setup"
+
+echo "OpenAI Secure MCP Tunnel 설정 도우미: chatgpt-tunnel-setup"
