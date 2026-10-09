@@ -1,0 +1,75 @@
+name: Debian Linux Container CI
+
+on:
+  push:
+    branches: ["main", "codex/**"]
+    paths:
+      - "linux/**"
+      - "compose.yaml"
+      - ".github/workflows/linux-container.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "linux/**"
+      - "compose.yaml"
+      - ".github/workflows/linux-container.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neoos-linux-container-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-container:
+    name: Build and smoke-test Debian container
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Compose configuration
+        run: docker compose -f compose.yaml config --quiet
+
+      - name: Build Debian container
+        run: docker build --pull --file linux/Dockerfile --tag neoos-linux:ci linux
+
+      - name: Start container
+        run: docker run --detach --name neoos-linux-ci --read-only --tmpfs /tmp:size=16m,mode=1777 --memory 512m --cpus 0.75 --pids-limit 128 --cap-drop ALL --security-opt no-new-privileges:true -p 127.0.0.1:18081:8081 neoos-linux:ci
+
+      - name: Wait for health endpoint
+        run: |
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:18081/health; then
+              echo
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs neoos-linux-ci
+          exit 1
+
+      - name: Smoke-test command execution
+        run: |
+          response="$(curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            --data '{"command":"printf NeoOS-Linux-OK"}' \
+            http://127.0.0.1:18081/exec)"
+          echo "$response"
+          echo "$response" | grep -q 'NeoOS-Linux-OK'
+
+      - name: Verify unknown routes are rejected
+        run: |
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18081/not-found)"
+          test "$status" = "404"
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs neoos-linux-ci || true
+
+      - name: Clean up
+        if: always()
+        run: docker rm --force neoos-linux-ci || true
