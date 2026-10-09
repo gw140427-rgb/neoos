@@ -35,6 +35,7 @@ while true; do
   echo "║ 5. 🔧 시스템 진단                ║"
   echo "║ 6. 🧹 패키지 캐시 정리           ║"
   echo "║ 7. 💾 민감정보 제외 백업          ║"
+  echo "║ 8. 🧰 AI 도구 설치/복구          ║"
   echo "║ 0. 🚪 종료                       ║"
   echo "╚══════════════════════════════════╝"
   read -r -p "👉 선택: " choice
@@ -125,6 +126,31 @@ while true; do
         echo "❌ 백업 스크립트가 없습니다."
         echo "설치 스크립트를 다시 실행해 backup-safe.sh를 내려받으세요."
       fi
+      pause
+      ;;
+    8)
+      echo
+      INSTALLER="$HOME/ai-room/install-ai.sh"
+      if [ ! -s "$INSTALLER" ]; then
+        echo "설치 스크립트를 다운로드합니다..."
+        mkdir -p "$HOME/ai-room" || { echo "❌ 작업 폴더 생성 실패"; pause; continue; }
+        TMP_INSTALL="$(mktemp "${TMPDIR:-/tmp}/neoos-install-ai.XXXXXX")" || { echo "❌ 임시 파일 생성 실패"; pause; continue; }
+        if command -v curl >/dev/null 2>&1 && curl -fL --retry 3 --connect-timeout 15 "https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/install-ai.sh" -o "$TMP_INSTALL" && [ -s "$TMP_INSTALL" ] && bash -n "$TMP_INSTALL"; then
+          if ! cp "$TMP_INSTALL" "$INSTALLER"; then
+            echo "❌ 설치 스크립트를 저장할 수 없습니다."
+            rm -f "$TMP_INSTALL"
+            pause
+            continue
+          fi
+        else
+          echo "❌ 설치 스크립트 다운로드 또는 문법 검사 실패"
+          rm -f "$TMP_INSTALL"
+          pause
+          continue
+        fi
+        rm -f "$TMP_INSTALL"
+      fi
+      bash "$INSTALLER"
       pause
       ;;
     0)
