@@ -75,6 +75,18 @@ download_file https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/
 chmod +x "$BASE/backup-safe.sh" 2>/dev/null || true
 
 mkdir -p "$HOME/bin"
+
+# Persist the command directory for future interactive shells. The current
+# installer process has its own PATH, but that does not update the user's shell.
+PATH_LINE='export PATH="$HOME/bin:$HOME/.local/bin:$PATH"'
+for rc in "$HOME/.bashrc" "$HOME/.profile"; do
+  if [ -f "$rc" ]; then
+    grep -Fqx "$PATH_LINE" "$rc" || printf '\n# NeoOS AI tools\n%s\n' "$PATH_LINE" >> "$rc"
+  else
+    printf '# NeoOS AI tools\n%s\n' "$PATH_LINE" > "$rc"
+  fi
+done
+export PATH="$HOME/bin:$HOME/.local/bin:$PATH"
 cat > "$HOME/bin/ai-room" <<'WRAP'
 #!/usr/bin/env bash
 exec "$HOME/ai-room/ai-room.sh" "$@"
@@ -283,7 +295,7 @@ echo "로그인/Provider 설정은 각 도구에서 직접 진행하세요."
 
 # OpenAI Secure MCP Tunnel helper. Installs the official ARM64 release on demand.
 cat > "$HOME/bin/chatgpt-tunnel-setup" <<'TUNNEL'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 set -Eeuo pipefail
 export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 
