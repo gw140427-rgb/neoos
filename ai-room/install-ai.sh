@@ -109,18 +109,80 @@ echo "MCP 실행: chatgpt-mcp"
 echo "MCP 서버는 기본적으로 localhost에서만 실행됩니다."
 echo "로그인/Provider 설정은 각 도구에서 직접 진행하세요."
 
-# OpenAI Secure MCP Tunnel helper (optional; does not install or store API keys).
+# OpenAI Secure MCP Tunnel helper. Installs the official ARM64 release on demand.
 cat > "$HOME/bin/chatgpt-tunnel-setup" <<'TUNNEL'
 #!/data/data/com.termux/files/usr/bin/bash
-set -eu
+set -Eeuo pipefail
 export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 
-if ! command -v tunnel-client >/dev/null 2>&1; then
-  echo "tunnel-client가 현재 Termux PATH에 없습니다."
-  echo "주의: Debian/PRoot 안에 설치된 tunnel-client는 Termux에서 자동으로 사용할 수 없습니다."
-  echo "OpenAI tunnel-client를 이 환경에 별도로 준비한 뒤 다시 실행하세요."
-  exit 1
-fi
+VERSION="v0.0.16"
+RELEASE_BASE="https://github.com/openai/tunnel-client/releases/download/$VERSION"
+ASSET="tunnel-client-${VERSION}-linux-arm64.zip"
+BIN_DIR="$HOME/.local/bin"
+TMP_DIR=""
+
+cleanup() {
+  if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then rm -rf "$TMP_DIR"; fi
+}
+trap cleanup EXIT
+
+install_tunnel_client() {
+  if command -v tunnel-client >/dev/null 2>&1; then
+    echo "tunnel-client: $(tunnel-client --version 2>&1 | head -n 1)"
+    return 0
+  fi
+
+  case "$(uname -m)" in
+    aarch64|arm64) ;;
+    *)
+      echo "이 설치 스크립트는 ARM64/aarch64 전용 릴리스를 지원합니다. 현재 아키텍처: $(uname -m)" >&2
+      return 1
+      ;;
+  esac
+
+  command -v curl >/dev/null 2>&1 || { echo "curl이 없습니다. 먼저 pkg install curl을 실행하세요." >&2; return 1; }
+  command -v unzip >/dev/null 2>&1 || {
+    if command -v pkg >/dev/null 2>&1; then
+      pkg install -y unzip coreutils
+    else
+      echo "unzip이 없습니다. unzip과 sha256sum을 설치한 뒤 다시 실행하세요." >&2
+      return 1
+    fi
+  }
+  command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum이 없습니다." >&2; return 1; }
+
+  TMP_DIR="$(mktemp -d "${TMPDIR:-$HOME}/tunnel-client-install.XXXXXX")"
+  echo "OpenAI 공식 tunnel-client ${VERSION} ARM64 릴리스를 다운로드합니다..."
+  curl --fail --location --silent --show-error "$RELEASE_BASE/$ASSET" -o "$TMP_DIR/$ASSET"
+  curl --fail --location --silent --show-error "$RELEASE_BASE/SHA256SUMS.txt" -o "$TMP_DIR/SHA256SUMS.txt"
+
+  (
+    cd "$TMP_DIR"
+    grep -E "[[:space:]]${ASSET//./\\.}$" SHA256SUMS.txt > expected.sha256 || {
+      echo "공식 SHA256SUMS에서 ${ASSET} 체크섬을 찾지 못했습니다." >&2
+      exit 1
+    }
+    sha256sum -c expected.sha256
+  )
+
+  mkdir -p "$BIN_DIR"
+  unzip -q "$TMP_DIR/$ASSET" -d "$TMP_DIR/unpacked"
+  CLIENT_PATH="$(find "$TMP_DIR/unpacked" -type f -name tunnel-client -print -quit)"
+  [ -n "$CLIENT_PATH" ] || { echo "압축 파일에 tunnel-client 실행 파일이 없습니다." >&2; return 1; }
+  install -m 0755 "$CLIENT_PATH" "$BIN_DIR/tunnel-client"
+
+  CLOUDFLARED_PATH="$(find "$TMP_DIR/unpacked" -type f -name cloudflared -print -quit)"
+  if [ -n "$CLOUDFLARED_PATH" ]; then
+    install -m 0755 "$CLOUDFLARED_PATH" "$BIN_DIR/cloudflared"
+  fi
+
+  hash="$(sha256sum "$BIN_DIR/tunnel-client" | awk '{print $1}')"
+  echo "설치된 tunnel-client SHA256: $hash"
+  "$BIN_DIR/tunnel-client" --version
+}
+
+install_tunnel_client
+export PATH="$BIN_DIR:$PATH"
 
 read -r -p "OpenAI Tunnel ID (tunnel_...): " TUNNEL_ID
 [ -n "$TUNNEL_ID" ] || { echo "Tunnel ID가 비어 있습니다."; exit 1; }
@@ -145,11 +207,12 @@ tunnel-client init \
   --profile neoos-ai-room \
   --tunnel-id "$TUNNEL_ID" \
   --mcp-server-url "$MCP_URL"
+
 echo
-echo "프로필 생성 요청이 완료되었습니다. 서버를 먼저 실행한 뒤 다음 명령으로 터널을 실행하세요:"
+echo "프로필 생성 요청이 완료되었습니다. MCP 서버를 먼저 실행한 뒤 터널을 실행하세요:"
 echo "  tunnel-client run --profile neoos-ai-room"
 echo "터널 연결 후 ChatGPT의 MCP 커넥터에서 연결 상태를 확인하세요."
 TUNNEL
 chmod +x "$HOME/bin/chatgpt-tunnel-setup"
 
-echo "OpenAI Secure MCP Tunnel 설정 도우미: chatgpt-tunnel-setup"
+echo "OpenAI Secure MCP Tunnel 설치/설정 도우미: chatgpt-tunnel-setup"
