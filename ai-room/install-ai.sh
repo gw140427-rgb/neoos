@@ -94,6 +94,116 @@ else
   echo "⚠️ npm 없음"
 fi
 
+echo "== Claude Code =="
+if command -v claude >/dev/null 2>&1; then
+  echo "✅ Claude Code 이미 설치됨: $(claude --version 2>/dev/null | head -n 1)"
+else
+  CLAUDE_INSTALLER="$(mktemp)" || CLAUDE_INSTALLER=""
+  if [ -n "$CLAUDE_INSTALLER" ] && curl -fsSL --retry 3 --connect-timeout 15 https://claude.ai/install.sh -o "$CLAUDE_INSTALLER"; then
+    bash "$CLAUDE_INSTALLER" || echo "⚠️ Claude Code 설치 실패"
+    rm -f "$CLAUDE_INSTALLER"
+  else
+    echo "⚠️ Claude Code 설치 스크립트 다운로드 실패"
+    [ -z "$CLAUDE_INSTALLER" ] || rm -f "$CLAUDE_INSTALLER"
+  fi
+fi
+
+# Claude Code's native installer places the binary in ~/.local/bin.
+export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+if [ -n "${BASH_VERSION:-}" ] && [ -f "$HOME/.bashrc" ]; then
+  if ! grep -Fq 'export PATH="$HOME/.local/bin:$HOME/bin:$PATH"' "$HOME/.bashrc"; then
+    printf '\n# NeoOS: local AI tools\nexport PATH="$HOME/.local/bin:$HOME/bin:$PATH"\n' >> "$HOME/.bashrc"
+  fi
+fi
+
+echo "== GUI apps (Debian/Ubuntu only) =="
+if command -v apt-get >/dev/null 2>&1 && [ "${PREFIX:-}" != *"/com.termux/files/usr"* ]; then
+  ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+  case "$ARCH" in
+    arm64|amd64) ;;
+    *)
+      echo "⚠️ 공식 GUI 패키지 설치는 현재 스크립트에서 arm64/amd64만 지원합니다: $ARCH"
+      ARCH=""
+      ;;
+  esac
+
+  if [ -n "$ARCH" ]; then
+    FREE_KB="$(df -Pk / 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [[ "$FREE_KB" =~ ^[0-9]+$ ]] && [ "$FREE_KB" -lt 1800000 ]; then
+      echo "⚠️ 여유 공간이 1.8 GB보다 적어 GUI 앱 자동 설치를 건너뜁니다."
+      echo "   공간 확보 후: apt-get install chatgpt claude-desktop"
+    else
+      # Install Claude Desktop from Anthropic's official apt repository.
+      if [ ! -f /usr/share/keyrings/claude-desktop-archive-keyring.asc ]; then
+        curl -fsSLo /usr/share/keyrings/claude-desktop-archive-keyring.asc https://downloads.claude.ai/claude-desktop/key.asc || echo "⚠️ Claude Desktop 서명 키 다운로드 실패"
+      fi
+      if [ -f /usr/share/keyrings/claude-desktop-archive-keyring.asc ]; then
+        printf '%s\n' 'deb [signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc] https://downloads.claude.ai/claude-desktop/apt/stable stable main' > /etc/apt/sources.list.d/claude-desktop.list
+      fi
+
+      # Reuse the user's existing Download file if visible; otherwise use OpenAI's
+      # published latest .deb for this architecture. APT installs dependencies.
+      if dpkg-query -W -f='${Status}' chatgpt 2>/dev/null | grep -q 'install ok installed'; then
+        echo "✅ ChatGPT/Codex GUI 이미 설치됨"
+      else
+        CHATGPT_DEB=""
+        for candidate in /storage/emulated/0/Download/chatgpt_arm64.deb /sdcard/Download/chatgpt_arm64.deb "$HOME/storage/downloads/chatgpt_arm64.deb"; do
+          if [ "$ARCH" = "arm64" ] && [ -s "$candidate" ]; then CHATGPT_DEB="$candidate"; break; fi
+        done
+        if [ -z "$CHATGPT_DEB" ]; then
+          CHATGPT_TMP="$(mktemp -d)" || CHATGPT_TMP=""
+          if [ -n "$CHATGPT_TMP" ]; then
+            case "$ARCH" in
+              arm64) CHATGPT_URL="https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_arm64.deb" ;;
+              amd64) CHATGPT_URL="https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb" ;;
+            esac
+            if curl -fL --retry 3 --connect-timeout 15 "$CHATGPT_URL" -o "$CHATGPT_TMP/chatgpt.deb"; then
+              CHATGPT_DEB="$CHATGPT_TMP/chatgpt.deb"
+            else
+              echo "⚠️ ChatGPT/Codex GUI 다운로드 실패"
+            fi
+          fi
+        fi
+        if [ -n "$CHATGPT_DEB" ]; then
+          apt-get install -y "$CHATGPT_DEB" || echo "⚠️ ChatGPT/Codex GUI 설치 실패"
+        fi
+        [ -z "${CHATGPT_TMP:-}" ] || rm -rf "$CHATGPT_TMP"
+      fi
+
+      if [ -f /usr/share/keyrings/claude-desktop-archive-keyring.asc ]; then
+        apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y claude-desktop || echo "⚠️ Claude Desktop GUI 설치 실패"
+      else
+        echo "⚠️ Claude Desktop 저장소를 설정하지 못해 설치를 건너뜁니다."
+      fi
+
+      # Convenience launchers for PRoot/X11 sessions. --no-sandbox is needed
+      # only for root-run Electron apps; users should understand the security trade-off.
+      mkdir -p "$HOME/bin"
+      cat > "$HOME/bin/chatgpt-gui" <<'GUI'
+#!/usr/bin/env bash
+export DISPLAY="${DISPLAY:-:1}"
+if [ "$(id -u)" -eq 0 ]; then
+  exec chatgpt --no-sandbox "$@"
+fi
+exec chatgpt "$@"
+GUI
+      chmod +x "$HOME/bin/chatgpt-gui"
+
+      cat > "$HOME/bin/claude-desktop-gui" <<'GUI'
+#!/usr/bin/env bash
+export DISPLAY="${DISPLAY:-:1}"
+if [ "$(id -u)" -eq 0 ]; then
+  exec claude-desktop --no-sandbox "$@"
+fi
+exec claude-desktop "$@"
+GUI
+      chmod +x "$HOME/bin/claude-desktop-gui"
+    fi
+  fi
+else
+  echo "ℹ️ GUI 앱 설치는 Debian/Ubuntu 안에서만 실행합니다."
+fi
+
 echo "== Hermes =="
 if command -v hermes >/dev/null 2>&1; then
   echo "✅ Hermes 이미 설치됨"
