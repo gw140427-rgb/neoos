@@ -119,12 +119,14 @@ WRAP
 chmod +x "$HOME/bin/chatgpt-mcp"
 
 cat > "$HOME/bin/chatgpt-mcp-check" <<'WRAP'
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 set -u
 export CHATGPT_WORKSPACE="$HOME/ai-room/chatgpt-workspace"
-printf 'workspace: %s\n' "$CHATGPT_WORKSPACE"
-if python -c 'import fastmcp' >/dev/null 2>&1; then
-  echo "fastmcp: OK"
+printf 'workspace: %s\\n' "$CHATGPT_WORKSPACE"
+if [ -x "$HOME/ai-room/.venv/bin/python" ] && "$HOME/ai-room/.venv/bin/python" -c 'import fastmcp' >/dev/null 2>&1; then
+  echo "fastmcp: OK (venv)"
+elif python -c 'import fastmcp' >/dev/null 2>&1; then
+  echo "fastmcp: OK (system)"
 else
   echo "fastmcp: ERROR"
 fi
