@@ -94,6 +94,10 @@ fi
 echo "== OpenClaw =="
 if command -v openclaw >/dev/null 2>&1; then
   echo "✅ OpenClaw 이미 설치됨"
+elif command -v pkg >/dev/null 2>&1 && [[ "${PREFIX:-}" == *com.termux* ]]; then
+  echo "⚠️ Android Termux 호스트에서는 공식 OpenClaw Gateway 설치를 시도하지 않습니다."
+  echo "   OpenClaw 공식 설치 경로는 macOS/Linux/WSL이며, Android는 동반 앱(Node) 역할입니다."
+  echo "   Gateway를 설치하려면 Debian PRoot에 로그인한 뒤 이 설치 스크립트를 실행하세요."
 else
   curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --no-onboard || echo "⚠️ OpenClaw 설치 실패"
 fi
