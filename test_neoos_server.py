@@ -1,6 +1,5 @@
-"""Tests for the safe, read-only NeoOS server MVP."""
+"""Tests for the NeoOS server API, dashboard, and bounded Docker controls."""
 import json
-import os
 import unittest
 from unittest.mock import patch
 from urllib.request import Request, urlopen
@@ -13,9 +12,7 @@ import server.neoos_server as app
 
 class ServerTests(unittest.TestCase):
     def test_system_status_has_expected_fields(self):
-        with patch.object(app.shutil, "disk_usage", return_value=type("Usage", (), {
-            "total": 100, "used": 40, "free": 60
-        })()):
+        with patch.object(app.shutil, "disk_usage", return_value=type("Usage", (), {"total": 100, "used": 40, "free": 60})()):
             data = app.system_status()
         self.assertIn("architecture", data)
         self.assertIn("disk_root", data)
@@ -29,19 +26,36 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0], ["docker", "info", "--format", "{{.ServerVersion}}"])
 
     @patch.object(app.subprocess, "run")
-    def test_container_listing_parses_safe_fields(self, run):
+    def test_container_listing_exposes_only_safe_fields(self, run):
         run.return_value.returncode = 0
-        run.return_value.stdout = json.dumps({
-            "ID": "abc", "Names": "demo", "Image": "alpine", "State": "running",
-            "Status": "Up 2 minutes", "Ports": "secret-ish", "Mounts": "/host:/container"
-        }) + "\n"
+        run.return_value.stdout = json.dumps({"ID": "a" * 64, "Names": "demo", "Image": "alpine", "State": "running", "Status": "Up 2 minutes", "Ports": "hidden", "Mounts": "/host:/container"}) + "\n"
         data = app.docker_containers()
         self.assertTrue(data["available"])
         self.assertEqual(data["containers"][0]["name"], "demo")
         self.assertNotIn("Mounts", data["containers"][0])
         self.assertNotIn("Ports", data["containers"][0])
+        self.assertIn("--no-trunc", run.call_args.args[0])
 
-    def test_http_auth_and_read_only_routes(self):
+    @patch.object(app, "docker_containers", return_value={"available": True, "containers": [{"id": "a" * 64}]})
+    @patch.object(app.subprocess, "run")
+    def test_docker_action_is_allowlisted_and_targets_listed_id(self, run, listing):
+        run.return_value.returncode = 0
+        result = app.docker_container_action("a" * 64, "stop")
+        self.assertTrue(result["ok"])
+        self.assertEqual(run.call_args.args[0], ["docker", "stop", "a" * 64])
+        run.reset_mock()
+        self.assertEqual(app.docker_container_action("a" * 64, "exec")["error"], "unsupported_action")
+        run.assert_not_called()
+        self.assertEqual(app.docker_container_action("not-an-id", "stop")["error"], "invalid_container_id")
+
+    @patch.object(app, "docker_containers", return_value={"available": True, "containers": [{"id": "b" * 64}]})
+    @patch.object(app.subprocess, "run")
+    def test_docker_action_rejects_unlisted_container(self, run, listing):
+        result = app.docker_container_action("a" * 64, "stop")
+        self.assertEqual(result["error"], "container_not_found")
+        run.assert_not_called()
+
+    def test_http_auth_dashboard_and_action_confirmation(self):
         previous = app.TOKEN
         app.TOKEN = "t" * 32
         server = ThreadingHTTPServer(("127.0.0.1", 0), app.Handler)
@@ -49,6 +63,9 @@ class ServerTests(unittest.TestCase):
         thread.start()
         base = f"http://127.0.0.1:{server.server_port}"
         try:
+            with urlopen(base + "/") as response:
+                self.assertEqual(response.status, 200)
+                self.assertIn(b"NeoOS Server", response.read())
             with self.assertRaises(HTTPError) as err:
                 urlopen(base + "/api/status")
             self.assertEqual(err.exception.code, 401)
@@ -56,10 +73,14 @@ class ServerTests(unittest.TestCase):
             with patch.object(app, "system_status", return_value={"ok": True}):
                 with urlopen(req) as response:
                     self.assertEqual(json.loads(response.read()), {"ok": True})
-            req = Request(base + "/api/status", data=b"{}", method="POST")
+            req = Request(base + "/api/container-action", data=json.dumps({"container_id": "a" * 64, "action": "stop"}).encode(), headers={"Authorization": "Bearer " + app.TOKEN}, method="POST")
             with self.assertRaises(HTTPError) as err2:
                 urlopen(req)
-            self.assertEqual(err2.exception.code, 405)
+            self.assertEqual(err2.exception.code, 400)
+            req = Request(base + "/api/status", data=b"{}", method="POST")
+            with self.assertRaises(HTTPError) as err3:
+                urlopen(req)
+            self.assertEqual(err3.exception.code, 405)
         finally:
             server.shutdown()
             server.server_close()
