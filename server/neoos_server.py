@@ -14,6 +14,12 @@ TOKEN=os.environ.get("NEOOS_SERVER_TOKEN","")
 DASHBOARD_PATH=Path(__file__).with_name("dashboard.html")
 ALLOWED_DOCKER_ACTIONS={"start","stop","restart"}
 CONTAINER_ID_RE=re.compile(r"^[a-fA-F0-9]{4,64}$")
+SERVER_NAME_RE=re.compile(r"^[a-zA-Z][a-zA-Z0-9_.-]{0,31}$")
+SERVER_TEMPLATES={
+    "nginx":{"image":"nginx:alpine","command":["nginx","-g","daemon off;"]},
+    "alpine":{"image":"alpine:3.22","command":["sleep","365d"]},
+    "python":{"image":"python:3.13-alpine","command":["python","-m","http.server","8080","--bind","0.0.0.0"]},
+}
 
 def _read_meminfo()->dict[str,int]:
     values={}
@@ -62,6 +68,49 @@ def docker_container_action(container_id:str,action:str)->dict[str,Any]:
     if result.returncode!=0: return {"ok":False,"error":"docker_action_failed"}
     return {"ok":True,"action":action,"container_id":match["id"]}
 
+def docker_server_create(name:str,template:str)->dict[str,Any]:
+    """Create a constrained Docker container from a built-in template only."""
+    if not isinstance(name,str) or not SERVER_NAME_RE.fullmatch(name):
+        return {"ok":False,"error":"invalid_server_name"}
+    if template not in SERVER_TEMPLATES:
+        return {"ok":False,"error":"unsupported_template"}
+    listing=docker_containers()
+    if not listing["available"]:
+        return {"ok":False,"error":"docker_unavailable"}
+    if any(c["name"].lstrip("/") == name for c in listing["containers"]):
+        return {"ok":False,"error":"server_name_exists"}
+    spec=SERVER_TEMPLATES[template]
+    command=["docker","run","-d","--name",name,"--memory=256m","--cpus=0.5","--pids-limit=128","--restart=no",spec["image"],*spec["command"]]
+    try:
+        result=subprocess.run(command,capture_output=True,text=True,timeout=120,check=False)
+    except (FileNotFoundError,subprocess.TimeoutExpired):
+        return {"ok":False,"error":"docker_create_unavailable_or_timed_out"}
+    if result.returncode!=0:
+        return {"ok":False,"error":"docker_create_failed"}
+    return {"ok":True,"name":name,"template":template,"image":spec["image"],"container_id":result.stdout.strip()[:64],"note":"Container created without host port publishing or host-volume mounts."}
+
+
+def docker_server_delete(container_id:str)->dict[str,Any]:
+    """Delete only a listed, stopped container; never delete its volumes."""
+    if not isinstance(container_id,str) or not CONTAINER_ID_RE.fullmatch(container_id):
+        return {"ok":False,"error":"invalid_container_id"}
+    listing=docker_containers()
+    if not listing["available"]:
+        return {"ok":False,"error":"docker_unavailable"}
+    match=next((c for c in listing["containers"] if c["id"]==container_id),None)
+    if match is None:
+        return {"ok":False,"error":"container_not_found"}
+    if str(match.get("state","")).lower()=="running":
+        return {"ok":False,"error":"stop_server_before_delete"}
+    try:
+        result=subprocess.run(["docker","rm",match["id"]],capture_output=True,text=True,timeout=20,check=False)
+    except (FileNotFoundError,subprocess.TimeoutExpired):
+        return {"ok":False,"error":"docker_delete_unavailable_or_timed_out"}
+    if result.returncode!=0:
+        return {"ok":False,"error":"docker_delete_failed"}
+    return {"ok":True,"deleted_container_id":match["id"],"name":match.get("name","")}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version="NeoOS-Server/0.2"
     def _send(self,status:int,payload:dict[str,Any],content_type:str="application/json; charset=utf-8")->None:
@@ -86,21 +135,36 @@ class Handler(BaseHTTPRequestHandler):
         elif path=="/api/docker": self._send(200,docker_status())
         else: self._send(200,docker_containers())
     def do_POST(self)->None:
-        if urlparse(self.path).path!="/api/container-action": self._send(405,{"error":"method_not_allowed"}); return
+        path=urlparse(self.path).path
+        allowed={"/api/container-action","/api/server-create","/api/server-delete"}
+        if path not in allowed: self._send(405,{"error":"method_not_allowed"}); return
         if not self._authorized(): self._send(401,{"error":"unauthorized"}); return
         try: length=int(self.headers.get("Content-Length","0"))
         except ValueError: length=0
         if length<1 or length>1024: self._send(400,{"error":"invalid_request_size"}); return
         try: body=json.loads(self.rfile.read(length))
         except (json.JSONDecodeError,UnicodeDecodeError): self._send(400,{"error":"invalid_json"}); return
-        if not isinstance(body,dict) or body.get("confirm") is not True: self._send(400,{"error":"explicit_confirmation_required"}); return
-        container_id,action=body.get("container_id"),body.get("action")
-        if not isinstance(container_id,str) or not isinstance(action,str): self._send(400,{"error":"container_id_and_action_required"}); return
-        result=docker_container_action(container_id,action)
+        if not isinstance(body,dict) or body.get("confirm") is not True:
+            self._send(400,{"error":"explicit_confirmation_required"}); return
+        if path=="/api/server-create":
+            name,template=body.get("name"),body.get("template")
+            if not isinstance(name,str) or not isinstance(template,str):
+                self._send(400,{"error":"name_and_template_required"}); return
+            result=docker_server_create(name,template)
+        elif path=="/api/server-delete":
+            container_id=body.get("container_id")
+            if not isinstance(container_id,str):
+                self._send(400,{"error":"container_id_required"}); return
+            result=docker_server_delete(container_id)
+        else:
+            container_id,action=body.get("container_id"),body.get("action")
+            if not isinstance(container_id,str) or not isinstance(action,str):
+                self._send(400,{"error":"container_id_and_action_required"}); return
+            result=docker_container_action(container_id,action)
         if result.get("ok"): self._send(200,result)
         elif result.get("error")=="docker_unavailable": self._send(503,result)
         elif result.get("error")=="container_not_found": self._send(404,result)
-        elif result.get("error") in ("unsupported_action","invalid_container_id"): self._send(400,result)
+        elif result.get("error") in ("unsupported_action","invalid_container_id","invalid_server_name","unsupported_template","server_name_exists","explicit_confirmation_required","stop_server_before_delete"): self._send(400,result)
         else: self._send(502,result)
     def log_message(self,fmt:str,*args:Any)->None: print("NeoOS Server:",fmt%args)
 
