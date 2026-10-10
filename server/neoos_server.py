@@ -1,152 +1,116 @@
 #!/usr/bin/env python3
-"""Minimal, read-only NeoOS server control API.
-
-Security model: loopback-only by default, bearer-token auth for API routes,
-fixed Docker commands only, and no arbitrary shell/terminal endpoint.
-Use SSH port forwarding for remote access rather than exposing this service.
-"""
+"""Small NeoOS server API with a local dashboard and bounded Docker controls."""
 from __future__ import annotations
-
-import hmac
-import json
-import os
-import platform
-import shutil
-import subprocess
-import time
+import hmac, json, os, platform, re, shutil, subprocess, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
-STARTED_AT = time.monotonic()
-HOST = os.environ.get("NEOOS_SERVER_HOST", "127.0.0.1")
-PORT = int(os.environ.get("NEOOS_SERVER_PORT", "8765"))
-TOKEN = os.environ.get("NEOOS_SERVER_TOKEN", "")
+STARTED_AT=time.monotonic()
+HOST=os.environ.get("NEOOS_SERVER_HOST","127.0.0.1")
+PORT=int(os.environ.get("NEOOS_SERVER_PORT","8765"))
+TOKEN=os.environ.get("NEOOS_SERVER_TOKEN","")
+DASHBOARD_PATH=Path(__file__).with_name("dashboard.html")
+ALLOWED_DOCKER_ACTIONS={"start","stop","restart"}
+CONTAINER_ID_RE=re.compile(r"^[a-fA-F0-9]{4,64}$")
 
-
-def _read_meminfo() -> dict[str, int]:
-    values: dict[str, int] = {}
+def _read_meminfo()->dict[str,int]:
+    values={}
     try:
-        with open("/proc/meminfo", encoding="utf-8") as handle:
+        with open("/proc/meminfo",encoding="utf-8") as handle:
             for line in handle:
-                key, _, rest = line.partition(":")
-                fields = rest.split()
-                if fields and fields[0].isdigit():
-                    values[key] = int(fields[0]) * (1024 if len(fields) > 1 and fields[1] == "kB" else 1)
-    except OSError:
-        pass
+                key,_,rest=line.partition(":"); fields=rest.split()
+                if fields and fields[0].isdigit(): values[key]=int(fields[0])*(1024 if len(fields)>1 and fields[1]=="kB" else 1)
+    except OSError: pass
     return values
 
+def system_status()->dict[str,Any]:
+    usage=shutil.disk_usage("/"); memory=_read_meminfo()
+    return {"platform":platform.platform(),"architecture":platform.machine(),"python":platform.python_version(),
+      "uptime_seconds":int(time.monotonic()-STARTED_AT),
+      "disk_root":{"total_bytes":usage.total,"used_bytes":usage.used,"free_bytes":usage.free},
+      "memory":{"total_bytes":memory.get("MemTotal"),"available_bytes":memory.get("MemAvailable")}}
 
-def system_status() -> dict[str, Any]:
-    usage = shutil.disk_usage("/")
-    memory = _read_meminfo()
-    return {
-        "platform": platform.platform(),
-        "architecture": platform.machine(),
-        "python": platform.python_version(),
-        "uptime_seconds": int(time.monotonic() - STARTED_AT),
-        "disk_root": {"total_bytes": usage.total, "used_bytes": usage.used, "free_bytes": usage.free},
-        "memory": {
-            "total_bytes": memory.get("MemTotal"),
-            "available_bytes": memory.get("MemAvailable"),
-        },
-    }
+def docker_status()->dict[str,Any]:
+    try: result=subprocess.run(["docker","info","--format","{{.ServerVersion}}"],capture_output=True,text=True,timeout=4,check=False)
+    except (FileNotFoundError,subprocess.TimeoutExpired): return {"available":False,"reason":"Docker CLI unavailable or timed out"}
+    if result.returncode!=0: return {"available":False,"reason":"Docker daemon unavailable"}
+    return {"available":True,"server_version":result.stdout.strip()}
 
-
-def docker_status() -> dict[str, Any]:
-    try:
-        result = subprocess.run(
-            ["docker", "info", "--format", "{{.ServerVersion}}"],
-            capture_output=True, text=True, timeout=4, check=False,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return {"available": False, "reason": "Docker CLI unavailable or timed out"}
-    if result.returncode != 0:
-        return {"available": False, "reason": "Docker daemon unavailable"}
-    return {"available": True, "server_version": result.stdout.strip()}
-
-
-def docker_containers() -> dict[str, Any]:
-    try:
-        result = subprocess.run(
-            ["docker", "ps", "--all", "--format", "{{json .}}"],
-            capture_output=True, text=True, timeout=5, check=False,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return {"available": False, "reason": "Docker CLI unavailable or timed out", "containers": []}
-    if result.returncode != 0:
-        return {"available": False, "reason": "Docker daemon unavailable", "containers": []}
-    containers = []
+def docker_containers()->dict[str,Any]:
+    try: result=subprocess.run(["docker","ps","--all","--no-trunc","--format","{{json .}}"],capture_output=True,text=True,timeout=5,check=False)
+    except (FileNotFoundError,subprocess.TimeoutExpired): return {"available":False,"reason":"Docker CLI unavailable or timed out","containers":[]}
+    if result.returncode!=0: return {"available":False,"reason":"Docker daemon unavailable","containers":[]}
+    containers=[]
     for line in result.stdout.splitlines():
-        try:
-            item = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        # Only expose common, non-secret display fields.
-        containers.append({
-            "id": item.get("ID", ""),
-            "name": item.get("Names", ""),
-            "image": item.get("Image", ""),
-            "state": item.get("State", ""),
-            "status": item.get("Status", ""),
-        })
-    return {"available": True, "containers": containers}
+        try: item=json.loads(line)
+        except json.JSONDecodeError: continue
+        containers.append({"id":item.get("ID",""),"name":item.get("Names",""),"image":item.get("Image",""),"state":item.get("State",""),"status":item.get("Status","")})
+    return {"available":True,"containers":containers}
 
+def docker_container_action(container_id:str,action:str)->dict[str,Any]:
+    """Run only an allowlisted Docker action on a currently listed container ID."""
+    if action not in ALLOWED_DOCKER_ACTIONS: return {"ok":False,"error":"unsupported_action"}
+    if not CONTAINER_ID_RE.fullmatch(container_id): return {"ok":False,"error":"invalid_container_id"}
+    listing=docker_containers()
+    if not listing["available"]: return {"ok":False,"error":"docker_unavailable"}
+    match=next((c for c in listing["containers"] if c["id"]==container_id),None)
+    if match is None: return {"ok":False,"error":"container_not_found"}
+    try: result=subprocess.run(["docker",action,match["id"]],capture_output=True,text=True,timeout=15,check=False)
+    except (FileNotFoundError,subprocess.TimeoutExpired): return {"ok":False,"error":"docker_cli_unavailable_or_timed_out"}
+    if result.returncode!=0: return {"ok":False,"error":"docker_action_failed"}
+    return {"ok":True,"action":action,"container_id":match["id"]}
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "NeoOS-Server/0.1"
+    server_version="NeoOS-Server/0.2"
+    def _send(self,status:int,payload:dict[str,Any],content_type:str="application/json; charset=utf-8")->None:
+        body=json.dumps(payload,ensure_ascii=False).encode("utf-8") if content_type.startswith("application/json") else payload["raw"]
+        self.send_response(status); self.send_header("Content-Type",content_type); self.send_header("Content-Length",str(len(body)))
+        self.send_header("Cache-Control","no-store"); self.send_header("X-Content-Type-Options","nosniff")
+        self.send_header("Content-Security-Policy","default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+        self.end_headers(); self.wfile.write(body)
+    def _authorized(self)->bool:
+        supplied=self.headers.get("Authorization",""); expected="Bearer "+TOKEN if TOKEN else ""
+        return bool(TOKEN) and hmac.compare_digest(supplied,expected)
+    def do_GET(self)->None:
+        path=urlparse(self.path).path
+        if path=="/health": self._send(200,{"ok":True,"service":"neoos-server"}); return
+        if path in ("/","/dashboard"):
+            try: body=DASHBOARD_PATH.read_bytes()
+            except OSError: self._send(500,{"error":"dashboard_unavailable"}); return
+            self._send(200,{"raw":body},"text/html; charset=utf-8"); return
+        if path not in ("/api/status","/api/docker","/api/containers"): self._send(404,{"error":"not_found"}); return
+        if not self._authorized(): self._send(401,{"error":"unauthorized"}); return
+        if path=="/api/status": self._send(200,system_status())
+        elif path=="/api/docker": self._send(200,docker_status())
+        else: self._send(200,docker_containers())
+    def do_POST(self)->None:
+        if urlparse(self.path).path!="/api/container-action": self._send(405,{"error":"method_not_allowed"}); return
+        if not self._authorized(): self._send(401,{"error":"unauthorized"}); return
+        try: length=int(self.headers.get("Content-Length","0"))
+        except ValueError: length=0
+        if length<1 or length>1024: self._send(400,{"error":"invalid_request_size"}); return
+        try: body=json.loads(self.rfile.read(length))
+        except (json.JSONDecodeError,UnicodeDecodeError): self._send(400,{"error":"invalid_json"}); return
+        if not isinstance(body,dict) or body.get("confirm") is not True: self._send(400,{"error":"explicit_confirmation_required"}); return
+        container_id,action=body.get("container_id"),body.get("action")
+        if not isinstance(container_id,str) or not isinstance(action,str): self._send(400,{"error":"container_id_and_action_required"}); return
+        result=docker_container_action(container_id,action)
+        if result.get("ok"): self._send(200,result)
+        elif result.get("error")=="docker_unavailable": self._send(503,result)
+        elif result.get("error")=="container_not_found": self._send(404,result)
+        elif result.get("error") in ("unsupported_action","invalid_container_id"): self._send(400,result)
+        else: self._send(502,result)
+    def log_message(self,fmt:str,*args:Any)->None: print("NeoOS Server:",fmt%args)
 
-    def _send(self, status: int, payload: dict[str, Any]) -> None:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_GET(self) -> None:  # noqa: N802
-        if self.path == "/health":
-            self._send(200, {"ok": True, "service": "neoos-server"})
-            return
-        if self.path not in ("/api/status", "/api/docker", "/api/containers"):
-            self._send(404, {"error": "not_found"})
-            return
-        supplied = self.headers.get("Authorization", "")
-        expected = "Bearer " + TOKEN if TOKEN else ""
-        if not TOKEN or not hmac.compare_digest(supplied, expected):
-            self._send(401, {"error": "unauthorized"})
-            return
-        if self.path == "/api/status":
-            self._send(200, system_status())
-        elif self.path == "/api/docker":
-            self._send(200, docker_status())
-        else:
-            self._send(200, docker_containers())
-
-    def do_POST(self) -> None:  # noqa: N802
-        # Mutating endpoints and arbitrary command execution are intentionally absent.
-        self._send(405, {"error": "method_not_allowed", "message": "Read-only MVP"})
-
-    def log_message(self, fmt: str, *args: Any) -> None:
-        # Keep logs concise; do not log request headers or tokens.
-        print("NeoOS Server:", fmt % args)
-
-
-def main() -> None:
-    if not TOKEN or len(TOKEN) < 24:
-        raise SystemExit("Set NEOOS_SERVER_TOKEN to a random value of at least 24 characters.")
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"NeoOS Server listening on {HOST}:{PORT}; read-only API enabled.")
+def main()->None:
+    if not TOKEN or len(TOKEN)<24: raise SystemExit("Set NEOOS_SERVER_TOKEN to a random value of at least 24 characters.")
+    server=ThreadingHTTPServer((HOST,PORT),Handler)
+    print(f"NeoOS Server listening on {HOST}:{PORT}; authenticated API enabled.")
     print("Remote access: use SSH port forwarding; do not expose this port publicly.")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.server_close()
+    try: server.serve_forever()
+    except KeyboardInterrupt: pass
+    finally: server.server_close()
 
-
-if __name__ == "__main__":
-    main()
+if __name__=="__main__": main()
