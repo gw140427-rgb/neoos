@@ -2,6 +2,37 @@
 
 Termux용 YANGYANG AI 작업실입니다.
 
+## 처음 설치 (Termux)
+
+아래 명령은 **Termux 터미널에서** 실행하세요. 먼저 폴더를 만들고 다운로드한 뒤 실행합니다.
+
+```bash
+pkg install -y curl
+mkdir -p "$HOME/ai-room"
+curl -fL --retry 3 --connect-timeout 15 \
+  "https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/ai-room.sh" \
+  -o "$HOME/ai-room/ai-room.sh"
+bash -n "$HOME/ai-room/ai-room.sh" &&
+  bash "$HOME/ai-room/ai-room.sh"
+```
+
+위 명령은 작업실 메뉴를 실행합니다. 메뉴에서 `8`을 선택하면 AI 도구 설치/복구를 시작합니다.
+
+## AI 도구만 설치
+
+작업실 메뉴 없이 설치 스크립트를 직접 실행하려면 **Termux에서**:
+
+```bash
+mkdir -p "$HOME/ai-room"
+curl -fL --retry 3 --connect-timeout 15 \
+  "https://raw.githubusercontent.com/gw140427-rgb/neoos/main/ai-room/install-ai.sh" \
+  -o "$HOME/ai-room/install-ai.sh"
+bash -n "$HOME/ai-room/install-ai.sh" &&
+  bash "$HOME/ai-room/install-ai.sh"
+```
+
+이 저장소에는 `install-all.sh`라는 파일이 없습니다. 실제 AI 도구 설치 파일 이름은 `install-ai.sh`입니다.
+
 ## 구성
 
 - `ai-room.sh`: AI 상태/작업실 메뉴
@@ -10,20 +41,24 @@ Termux용 YANGYANG AI 작업실입니다.
 - `backup-local.sh`: 기존 로컬 백업
 - `README.md`: 사용 설명
 
-## 설치
+## NeoOS Super MCP 설치 (Debian/PRoot)
 
-Termux에서:
+아래 명령은 **Debian 세션 안에서** 실행하세요. 주소 중간에 공백을 넣지 마세요.
 
 ```bash
-bash ~/ai-room/install-ai.sh
+curl -fL --retry 3 --connect-timeout 15 \
+  "https://raw.githubusercontent.com/gw140427-rgb/neoos/main/scripts/setup-neoos-super-mcp.sh" \
+  -o "$HOME/setup-neoos-super-mcp.sh"
+bash -n "$HOME/setup-neoos-super-mcp.sh" &&
+  bash "$HOME/setup-neoos-super-mcp.sh"
 ```
 
-설치 스크립트는 기존 Node 프로젝트를 삭제하지 않습니다. OpenClaw는 현재 공식 지원 Node 런타임을 자체 설치/관리할 수 있으며, Codex와 Hermes도 공식 설치 경로를 사용합니다.
+설치 스크립트는 `~/neoos-super-mcp`에 프로젝트가 있거나, Android Download 또는 홈 폴더에 `neoos-super-mcp.zip`이 있는지 확인합니다. 둘 다 없으면 프로젝트를 찾지 못했다는 오류를 냅니다.
 
 ## 안전 백업
 
 ```bash
-bash ~/ai-room/backup-safe.sh
+bash "$HOME/ai-room/backup-safe.sh"
 ```
 
 백업에서 다음과 같은 민감정보는 제외합니다.
