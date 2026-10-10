@@ -26,10 +26,23 @@ install_base_packages() {
       echo "오류: Debian/Ubuntu에서 패키지를 설치하려면 root 또는 sudo 권한이 필요합니다." >&2
       return 1
     fi
+    # IMPORTANT: Do not install Debian's separate "npm" package alongside
+    # NodeSource's nodejs package. NodeSource nodejs conflicts with Debian npm.
+    # The NodeSource nodejs package provides the npm CLI itself.
     "${APT[@]}" update &&
       DEBIAN_FRONTEND=noninteractive "${APT[@]}" install -y \
         git curl python3 python-is-python3 python3-venv python3-pip \
-        nodejs npm openssl ca-certificates unzip
+        nodejs openssl ca-certificates unzip
+    local apt_status=$?
+    if [ "$apt_status" -ne 0 ]; then
+      return "$apt_status"
+    fi
+    if ! command -v npm >/dev/null 2>&1; then
+      echo "오류: Node.js 설치 후 npm 명령을 찾지 못했습니다." >&2
+      echo "현재 Node.js 저장소 설정과 PATH를 확인하세요. 기존 Node.js를 제거하지 않았습니다." >&2
+      return 1
+    fi
+    echo "Node: $(node --version 2>/dev/null || true) / npm: $(npm --version 2>/dev/null || true)"
   elif command -v pkg >/dev/null 2>&1; then
     echo "오류: 'pkg' 명령은 있지만 현재 환경이 실제 Termux가 아닙니다." >&2
     echo "Debian/Ubuntu에서는 apt-get이 필요합니다." >&2
@@ -76,8 +89,6 @@ chmod +x "$BASE/backup-safe.sh" 2>/dev/null || true
 
 mkdir -p "$HOME/bin"
 
-# Persist the command directory for future interactive shells. The current
-# installer process has its own PATH, but that does not update the user's shell.
 PATH_LINE='export PATH="$HOME/bin:$HOME/.local/bin:$PATH"'
 for rc in "$HOME/.bashrc" "$HOME/.profile"; do
   if [ -f "$rc" ]; then
@@ -120,7 +131,6 @@ else
   fi
 fi
 
-# Claude Code's native installer places the binary in ~/.local/bin.
 export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 if [ -n "${BASH_VERSION:-}" ] && [ -f "$HOME/.bashrc" ]; then
   if ! grep -Fq 'export PATH="$HOME/.local/bin:$HOME/bin:$PATH"' "$HOME/.bashrc"; then
@@ -145,16 +155,13 @@ if command -v apt-get >/dev/null 2>&1 && [ "${PREFIX:-}" != *"/com.termux/files/
       echo "⚠️ 여유 공간이 1.8 GB보다 적어 GUI 앱 자동 설치를 건너뜁니다."
       echo "   공간 확보 후: apt-get install chatgpt claude-desktop"
     else
-      # Install Claude Desktop from Anthropic's official apt repository.
       if [ ! -f /usr/share/keyrings/claude-desktop-archive-keyring.asc ]; then
-        curl -fsSLo /usr/share/keyrings/claude-desktop-archive-keyring.asc https://downloads.claude.ai/claude-desktop/key.asc || echo "⚠️ Claude Desktop 서명 키 다운로드 실패"
+        curl -fsSLo /usr/share/keyrings/claude-desktop-archive-keyring.asc https://downloads.claude.ai/claude-desktop/apt/key.asc || echo "⚠️ Claude Desktop 서명 키 다운로드 실패"
       fi
       if [ -f /usr/share/keyrings/claude-desktop-archive-keyring.asc ]; then
         printf '%s\n' 'deb [signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc] https://downloads.claude.ai/claude-desktop/apt/stable stable main' > /etc/apt/sources.list.d/claude-desktop.list
       fi
 
-      # Reuse the user's existing Download file if visible; otherwise use OpenAI's
-      # published latest .deb for this architecture. APT installs dependencies.
       if dpkg-query -W -f='${Status}' chatgpt 2>/dev/null | grep -q 'install ok installed'; then
         echo "✅ ChatGPT/Codex GUI 이미 설치됨"
       else
@@ -188,8 +195,6 @@ if command -v apt-get >/dev/null 2>&1 && [ "${PREFIX:-}" != *"/com.termux/files/
         echo "⚠️ Claude Desktop 저장소를 설정하지 못해 설치를 건너뜁니다."
       fi
 
-      # Convenience launchers for PRoot/X11 sessions. --no-sandbox is needed
-      # only for root-run Electron apps; users should understand the security trade-off.
       mkdir -p "$HOME/bin"
       cat > "$HOME/bin/chatgpt-gui" <<'GUI'
 #!/usr/bin/env bash
@@ -258,7 +263,7 @@ cat > "$HOME/bin/chatgpt-mcp-check" <<'WRAP'
 #!/usr/bin/env bash
 set -u
 export CHATGPT_WORKSPACE="$HOME/ai-room/chatgpt-workspace"
-printf 'workspace: %s\\n' "$CHATGPT_WORKSPACE"
+printf 'workspace: %s\n' "$CHATGPT_WORKSPACE"
 if [ -x "$HOME/ai-room/.venv/bin/python" ] && "$HOME/ai-room/.venv/bin/python" -c 'import fastmcp' >/dev/null 2>&1; then
   echo "fastmcp: OK (venv)"
 elif python -c 'import fastmcp' >/dev/null 2>&1; then
@@ -293,7 +298,6 @@ echo "MCP 실행: chatgpt-mcp"
 echo "MCP 서버는 기본적으로 localhost에서만 실행됩니다."
 echo "로그인/Provider 설정은 각 도구에서 직접 진행하세요."
 
-# OpenAI Secure MCP Tunnel helper. Installs the official ARM64 release on demand.
 cat > "$HOME/bin/chatgpt-tunnel-setup" <<'TUNNEL'
 #!/usr/bin/env bash
 set -Eeuo pipefail
