@@ -8,7 +8,9 @@ NeoOS Server is a small, self-hosted system dashboard and bounded Docker control
 - Docker daemon availability/version and container list.
 - Bearer-token authentication for all API routes except the basic health check and static dashboard shell.
 - Explicit-confirmation Docker start, stop, and restart for container IDs currently listed by Docker.
-- Loopback bind by default; no arbitrary command execution, browser terminal, image pulls, volume management, or container creation/deletion.
+- Server creation from three built-in Docker templates (`nginx`, `python`, `alpine`), with memory/CPU/PID limits and no host-port publishing or host-volume mounts.
+- Safe deletion of listed stopped containers only; running containers must be stopped first, and Docker volumes are not removed.
+- Loopback bind by default; no arbitrary command execution or browser terminal.
 
 The dashboard itself is public on the local listener but does not return system data without a token. Do not expose the service publicly. Use HTTPS or an SSH tunnel; the default loopback binding is intentional.
 
@@ -39,6 +41,8 @@ Routes:
 - `GET /` or `GET /dashboard`: dashboard UI.
 - `GET /api/status`, `/api/docker`, `/api/containers`: authenticated read endpoints.
 - `POST /api/container-action`: authenticated action; JSON must include `container_id`, `action` (`start`, `stop`, or `restart`), and `confirm: true`.
+- `POST /api/server-create`: authenticated creation from an allowlisted `template` (`nginx`, `python`, or `alpine`) and a validated `name`; JSON must include `confirm: true`.
+- `POST /api/server-delete`: authenticated deletion of a listed stopped container by `container_id`; JSON must include `confirm: true`.
 
 Docker actions use fixed argument arrays (no shell), validate the container ID, and require that the ID appears in a fresh container listing. The API token is powerful: someone who can control this server's Docker daemon may be able to affect the host. Only run it on a machine you control and never share the token. This MVP has not been independently security-audited.
 
