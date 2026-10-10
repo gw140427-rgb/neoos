@@ -88,5 +88,42 @@ class ServerTests(unittest.TestCase):
             app.TOKEN = previous
 
 
+    @patch.object(app, "docker_containers", return_value={"available": True, "containers": []})
+    @patch.object(app.subprocess, "run")
+    def test_server_create_uses_only_builtin_template_and_limits(self, run, listing):
+        run.return_value.returncode = 0
+        run.return_value.stdout = "c" * 64 + "\\n"
+        result = app.docker_server_create("demo-web", "nginx")
+        self.assertTrue(result["ok"])
+        command = run.call_args.args[0]
+        self.assertEqual(command[:3], ["docker", "run", "-d"])
+        self.assertIn("--memory=256m", command)
+        self.assertIn("--cpus=0.5", command)
+        self.assertNotIn("-p", command)
+        self.assertNotIn("-v", command)
+        self.assertEqual(command[-3:], ["nginx", "-g", "daemon off;"])
+
+    @patch.object(app.subprocess, "run")
+    def test_server_create_rejects_invalid_name_or_template(self, run):
+        self.assertEqual(app.docker_server_create("bad name", "nginx")["error"], "invalid_server_name")
+        self.assertEqual(app.docker_server_create("valid-name", "arbitrary-image")["error"], "unsupported_template")
+        run.assert_not_called()
+
+    @patch.object(app, "docker_containers", return_value={"available": True, "containers": [{"id": "d" * 64, "name": "demo", "state": "running"}]})
+    @patch.object(app.subprocess, "run")
+    def test_server_delete_refuses_running_container(self, run, listing):
+        result = app.docker_server_delete("d" * 64)
+        self.assertEqual(result["error"], "stop_server_before_delete")
+        run.assert_not_called()
+
+    @patch.object(app, "docker_containers", return_value={"available": True, "containers": [{"id": "e" * 64, "name": "demo", "state": "exited"}]})
+    @patch.object(app.subprocess, "run")
+    def test_server_delete_only_removes_stopped_container(self, run, listing):
+        run.return_value.returncode = 0
+        result = app.docker_server_delete("e" * 64)
+        self.assertTrue(result["ok"])
+        self.assertEqual(run.call_args.args[0], ["docker", "rm", "e" * 64])
+
+
 if __name__ == "__main__":
     unittest.main()
